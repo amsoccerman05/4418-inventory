@@ -88,7 +88,7 @@ test('restock filters and exported CSV contain only displayed items', async ({ p
   expect(exported[0].orderStatus).toBe('Ordered');
   await page.getByLabel('Restock order status').selectOption('Received');
   await expect(page.locator('tbody tr')).toHaveCount(0);
-  await expect(page.getByText('No matching restock items')).toBeVisible();
+  await expect(page.getByText('No items match these filters')).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
   await expect(page.locator('tbody tr')).toHaveCount(filterRestock(demo().items).length);
 });
