@@ -120,3 +120,5 @@ function ItemEditor({item,db,isNew,onClose,onSave,onDelete,onVerify,onOpenExisti
 }
 const sharedIdentity=(p:UserProfile)=>p.id!=='local-demo';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate>{(profile,signOut,updateProfile)=><Workspace profile={profile} signOut={signOut} updateProfile={updateProfile}/>}</AuthGate></React.StrictMode>);
+
+import "./design-system.css";
