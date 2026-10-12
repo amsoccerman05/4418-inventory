@@ -1,3 +1,4 @@
+import type {RestockPolicy} from './setup-model';
 import type {InventoryAction,ActionData,Media} from './logistics-model';
 import type { Database, Item } from '../data';
 export const userRoles=['readonly','student','lead','admin','mentor'] as const;
@@ -6,6 +7,7 @@ export interface UserProfile { id:string; displayName:string; email:string; role
 export interface InventoryEvent { id:string; itemId:string|null; itemName:string; areaId:string|null; userId:string|null; eventType:string; quantityBefore:number|null; quantityAfter:number|null; changeAmount:number|null; notes:string; createdAt:string }
 export interface QuantityResult { before:number; item:Item; locationQuantity?:number }
 export interface InventoryRepository {
+ setupItem(item:Item,policy:RestockPolicy,minimum:number,target:number):Promise<void>;
  action(action:InventoryAction|'enable',data:ActionData):Promise<void>;
  photoUrl(path:string):Promise<string>;
  savePhoto(kind:Media['entityType'],id:string,file:File,alt:string,previous?:Media):Promise<void>;

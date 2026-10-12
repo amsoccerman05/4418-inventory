@@ -1,0 +1,89 @@
+name: Check inventory workflows
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'supabase/migrations/**'
+      - 'tests/**'
+      - 'playwright*.config.ts'
+      - 'vite.config.ts'
+      - 'package*.json'
+      - '.github/workflows/inventory-workflows-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: inventory-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  database-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_INVENTORY_MODE: demo
+      - run: npm run test:security
+      - run: node --test tests/integration/inventory-safety.test.mjs
+      - name: Verify simultaneous transactions in an owned disposable PostgreSQL cluster
+        run: |
+          PG_BIN="$(find /usr/lib/postgresql -path '*/bin/postgres' -type f -printf '%h\n' | sort -V | tail -1)"
+          test -n "$PG_BIN" || { echo 'No installed PostgreSQL server binary found'; exit 1; }
+          INVENTORY_PG_BIN="$PG_BIN" node tests/native/inventory-concurrency.mjs
+
+  browser-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_INVENTORY_MODE: demo
+      - id: browser-install
+        run: npx playwright install --with-deps chromium
+      - name: Verify demo workflows and capture desktop, mobile and print review
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:e2e -- --output=test-results/demo
+      - name: Verify existing shared-workspace contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:shared -- --output=test-results/shared
+      - name: Verify existing logistics contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:logistics -- --output=test-results/logistics
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-synthetic-browser-review
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  real-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
+        with:
+          version: '2.119.0'
+      - name: Verify local-only isolation guards
+        run: node --test tests/integration/inventory-safety.test.mjs
+      - name: Verify real disposable Auth and PostgREST
+        run: node tests/integration/inventory-local.mjs --run
