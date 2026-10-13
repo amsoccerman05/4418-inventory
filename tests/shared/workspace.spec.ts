@@ -12,10 +12,27 @@ test('canonical gateway, restoration, protected routes and logout',async({page})
 test('student phone change is attributed and reaches a second device via realtime',async({page,newIsolatedContext})=>{
  await page.setViewportSize({width:390,height:844});
  const context=await newIsolatedContext();const mentor=await context.newPage();
+ const realtime:unknown[]=[];
+ for(const [actor,device]of [['student',page],['mentor',mentor]] as const){
+  device.on('websocket',socket=>{
+   const url=new URL(socket.url());const target=url.origin+url.pathname;
+   realtime.push({actor,event:'socket',target});socket.on('close',()=>realtime.push({actor,event:'close',target}));socket.on('socketerror',()=>realtime.push({actor,event:'socketerror',target}));
+   const recordFrame=(direction:string)=>(frame:{payload:string|Buffer})=>{try{
+    const [joinRef,ref,topic,event,payload]=JSON.parse(String(frame.payload));
+    realtime.push({actor,direction,joinRef,ref,topic,event,status:payload?.status,ids:payload?.ids,tables:payload?.config?.postgres_changes?.map((c:{table?:string})=>c.table)});
+   }catch{realtime.push({actor,direction,event:'non-JSON frame'});}};
+   socket.on('framesent',recordFrame('framesent'));socket.on('framereceived',recordFrame('framereceived'));
+  });
+  device.on('pageerror',error=>realtime.push({actor,event:'pageerror',message:error.message.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,'[redacted]')}));
+ }
  try{
   await signIn(mentor,'mentor');await mentor.goto(`/#location/${drawer}`);
   await signIn(page,'student');await page.getByRole('button',{name:'Toggle navigation'}).click();await page.getByRole('button',{name:'Inventory',exact:true}).click();
   await page.getByLabel('Search inventory').fill('5/32 Allen Wrench');await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect.poll(async()=>{
+   const state=await (await page.request.get('http://127.0.0.1:54329/__test/realtime')).json();
+   return [...new Set(state.subscriptions.filter((s:{tables:string[]})=>s.tables.includes('inventory_items')).map((s:{userId:string})=>s.userId))].sort();
+  },{message:'Both real SDK channels must be registered in the local Phoenix fixture before mutating stock'}).toEqual(['00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002']);
   await page.getByRole('button',{name:`Remove one ${tool}`,exact:true}).click();await expect(page.locator('.quantity-toast')).toContainText('3 each');
   await expect(mentor.getByLabel(`Current quantity for ${tool}`)).toHaveValue('3',{timeout:10000});
   await expect(mentor.locator('.audit-row').filter({has:mentor.getByRole('button',{name:tool,exact:true})})).toContainText('Missing tools');
@@ -25,7 +42,7 @@ test('student phone change is attributed and reaches a second device via realtim
   await page.getByRole('button',{name:'Verify quantity',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('verified and saved');
   await mentor.getByRole('button',{name:'Verify quantity',exact:true}).click();await expect(mentor.getByRole('dialog').getByRole('status')).toContainText('Could not verify quantity');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
- }finally{await context.close();}
+ }catch(error){console.error('Synthetic realtime diagnostics:',JSON.stringify(realtime));throw error;}finally{await context.close();}
 });
 
 test('readonly sees all inventory but cannot edit or audit; admin route is protected',async({page})=>{

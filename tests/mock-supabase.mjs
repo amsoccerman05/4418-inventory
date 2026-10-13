@@ -26,8 +26,10 @@ const jwt=id=>Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('bas
 const user=id=>({id,email:Object.keys(ids).find(k=>ids[k]===id)+'@example.test',aud:'authenticated',role:'authenticated',app_metadata:{provider:'email',providers:['email']},user_metadata:{},created_at:new Date().toISOString()});
 const session=id=>({access_token:jwt(id),refresh_token:'refresh-'+id,expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,token_type:'bearer',user:user(id)});
 const identity=req=>{try{return JSON.parse(Buffer.from(req.headers.authorization.split(' ')[1].split('.')[1],'base64url').toString()).sub;}catch{return null;}};
+// Phoenix multiplexes channels on one socket. An old React effect's late
+// phx_leave must never remove a different (or newly rejoined) subscription.
 const clients=new Map();
-const broadcast=()=>{for(const [socket,info]of clients)if(socket.readyState===1)socket.send(JSON.stringify([info.joinRef,null,info.topic,'postgres_changes',{ids:info.changes.map(c=>c.id),data:{schema:'public',table:'inventory_items',type:'UPDATE',commit_timestamp:new Date().toISOString(),columns:[{name:'id',type:'uuid'}],record:{id:item},old_record:{}}}]));};
+const broadcast=()=>{for(const [socket,channels]of clients)if(socket.readyState===1)for(const info of channels.values())socket.send(JSON.stringify([info.joinRef,null,info.topic,'postgres_changes',{ids:info.changes.filter(c=>!c.table||c.table==='inventory_items').map(c=>c.id),data:{schema:'public',table:'inventory_items',type:'UPDATE',commit_timestamp:new Date().toISOString(),columns:[{name:'id',type:'uuid'}],record:{id:item},old_record:{}}}]));};
 const server=createServer(async(req,res)=>{
  res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Access-Control-Allow-Headers','*');res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,PUT,DELETE,OPTIONS');res.setHeader('Content-Type','application/json');
  const send=(status,data)=>{res.statusCode=status;res.end(JSON.stringify(data));};
@@ -35,6 +37,9 @@ const server=createServer(async(req,res)=>{
  const chunks=[];for await(const c of req)chunks.push(c);const bytes=Buffer.concat(chunks);const input=bytes.length&&req.headers['content-type']?.includes('application/json')?JSON.parse(bytes.toString()):{};
  const url=new URL(req.url,'http://127.0.0.1:54329');
  if(url.pathname==='/health'){send(200,{ok:true});return;}
+ if(url.pathname==='/__test/realtime'){
+  send(200,{subscriptions:[...clients].flatMap(([socket,channels])=>socket.readyState===1?[...channels.values()].map(({userId,topic,joinRef,changes})=>({userId,topic,joinRef,tables:changes.map(c=>c.table)})):[])});return;
+ }
  if(url.pathname==='/auth/v1/token'){
   const role=input.email?.split('@')[0];const id=url.searchParams.get('grant_type')==='refresh_token'?input.refresh_token?.replace('refresh-',''):ids[role];
   if(!id||input.password&&input.password!=='test-password'){send(400,{error:'invalid_grant',error_description:'Invalid login credentials',msg:'Invalid login credentials'});return;}send(200,session(id));return;
@@ -88,12 +93,21 @@ const server=createServer(async(req,res)=>{
  }catch(e){send(e.code==='42501'?403:409,{message:e.message,code:e.code??'ERROR'});}
 });
 const ws=new WebSocketServer({server});
-ws.on('connection',socket=>socket.on('message',raw=>{
+ws.on('connection',socket=>{
+ clients.set(socket,new Map());
+ socket.on('close',()=>clients.delete(socket));
+ socket.on('message',raw=>{
  const [join_ref,ref,topic,event,payload]=JSON.parse(raw.toString());const message={join_ref,ref,topic,event,payload};
  if(message.event==='phx_join'){
-  const changes=(message.payload.config?.postgres_changes??[]).map((c,n)=>({...c,id:n+1}));clients.set(socket,{topic:message.topic,changes,joinRef:message.join_ref});
+  const changes=(message.payload.config?.postgres_changes??[]).map((c,n)=>({...c,id:n+1}));
+  let userId=null;try{userId=JSON.parse(Buffer.from(message.payload.access_token.split('.')[1],'base64url').toString()).sub;}catch{/* synthetic anonymous diagnostic */}
+  clients.get(socket).set(message.topic,{topic:message.topic,changes,joinRef:message.join_ref,userId});
   socket.send(JSON.stringify([message.join_ref,message.ref,message.topic,'phx_reply',{status:'ok',response:{postgres_changes:changes}}]));
  }else if(message.event==='heartbeat')socket.send(JSON.stringify([message.join_ref,message.ref,'phoenix','phx_reply',{status:'ok',response:{}}]));
- else if(message.event==='phx_leave'){clients.delete(socket);socket.send(JSON.stringify([message.join_ref,message.ref,message.topic,'phx_reply',{status:'ok',response:{}}]));}
-}));
+ else if(message.event==='phx_leave'){
+  const channels=clients.get(socket);if(channels?.get(message.topic)?.joinRef===message.join_ref)channels.delete(message.topic);
+  socket.send(JSON.stringify([message.join_ref,message.ref,message.topic,'phx_reply',{status:'ok',response:{}}]));
+ }
+ });
+});
 server.listen(Number(process.env.TEST_SUPABASE_PORT||process.env.TEST_PORT||54329),'127.0.0.1',()=>console.log('Local Supabase contract fixture ready'));
