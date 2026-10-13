@@ -28,7 +28,7 @@ test('removing several tools distinguishes missing, low, and out',async({page})=
 });
 
 test('moving between drawers preserves ID and updates both hierarchies',async({page})=>{
- await page.goto('/#location/ta-01');const before=await readDb(page);const item=before.items.find(i=>i.name===name)!;
+ await page.goto('/#location/ta-01');await expect(rowFor(page,name)).toBeVisible();const before=await readDb(page);expect(before.locations.every(location=>!!location.labelCode)).toBe(true);const item=before.items.find(i=>i.name===name)!;
  await page.getByRole('button',{name,exact:true}).click();
  await page.getByLabel('Location / Bin').selectOption('tb-15');
  await page.getByLabel('Slot / Position (optional)').fill('B-05');

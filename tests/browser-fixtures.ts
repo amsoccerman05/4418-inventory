@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type BrowserContext,
   type BrowserContextOptions,
+  type Route,
 } from '@playwright/test';
 
 export { expect };
@@ -62,15 +63,21 @@ export class NetworkIsolation {
 
   async protectContext(context: BrowserContext, baseURL?: string) {
     this.protectRequest(context.request, baseURL);
-    await context.route('**/*', async route => {
+    const inFlight = new Set<Promise<void>>();
+    let shuttingDown = false;
+    const handleRoute = async (route: Route) => {
       const value = route.request().url();
-      if (value === fontStylesheet) {
+      if (value === fontStylesheet && !shuttingDown) {
         await route.fulfill({ contentType: 'text/css', body: '/* Fonts are local fallbacks in synthetic browser tests. */' });
         return;
       }
-      if (!isLoopbackURL(value)) {
+      if (!isLoopbackURL(value) && value !== fontStylesheet) {
         this.deny('browser request', value);
         await route.abort('blockedbyclient');
+        return;
+      }
+      if (shuttingDown) {
+        await route.abort('aborted');
         return;
       }
       // Playwright routing only guarantees interception of the first URL in a
@@ -85,12 +92,39 @@ export class NetworkIsolation {
           await route.abort('blockedbyclient');
         } else await route.fulfill({ response });
       } finally { await response.dispose(); }
+    };
+    await context.route('**/*', route => {
+      const work = handleRoute(route);
+      inFlight.add(work);
+      // Track completion without replacing the returned rejecting promise:
+      // Playwright must still surface an actual route-handler failure.
+      void work.then(() => inFlight.delete(work), () => inFlight.delete(work));
+      return work;
     });
-    await context.routeWebSocket('**/*', route => {
-      if (!isLoopbackURL(route.url(), ['ws:', 'wss:'])) {
-        this.deny('WebSocket', route.url());
-        route.close({ code: 1008, reason: 'Only literal loopback is allowed in tests' });
-      } else route.connectToServer();
+    const close = context.close.bind(context);
+    let closing: Promise<void> | undefined;
+    context.close = options => closing ??= (async () => {
+      shuttingDown = true;
+      const failures: unknown[] = [];
+      // Keep the guard installed while draining. unrouteAll() would leave a
+      // window where a background timer could initiate an unguarded request.
+      while (inFlight.size) {
+        for (const result of await Promise.allSettled([...inFlight])) {
+          if (result.status === 'rejected') failures.push(result.reason);
+        }
+      }
+      await close(options);
+      if (failures.length) throw new AggregateError(failures, 'HTTP routes failed during guarded context teardown');
+    })();
+    // Match only forbidden destinations. Relaying permitted sockets through
+    // route.connectToServer() changes the realtime transport's timing; native
+    // passthrough preserves Phoenix framing, protocols and message ordering.
+    // Use a serializable regex: a predicate function installs a catch-all
+    // browser pattern and still routes allowed sockets through the test process.
+    // Native browser WebSockets reject redirects (WHATWG opening handshake).
+    await context.routeWebSocket(/^wss?:\/\/(?!(?:127\.0\.0\.1|\[::1\])(?::[0-9]+)?(?:\/|$))/, async route => {
+      this.deny('WebSocket', route.url());
+      await route.close({ code: 1008, reason: 'Only literal loopback is allowed in tests' });
     });
   }
 }

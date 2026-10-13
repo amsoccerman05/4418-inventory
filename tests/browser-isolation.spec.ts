@@ -1,5 +1,7 @@
 import { createServer, type Server } from 'node:http';
-import { test, expect, isLoopbackURL } from './browser-fixtures';
+import { WebSocketServer } from 'ws';
+import { test, expect, isLoopbackURL, NetworkIsolation } from './browser-fixtures';
+import type { BrowserContext, Route } from '@playwright/test';
 
 // Reserved .invalid avoids contacting a real site even if a future guard regresses.
 const remote = 'https://production.invalid/';
@@ -46,14 +48,21 @@ test('API helpers cannot escape to production even when errors are caught', asyn
 
 let server: Server;
 let redirectURL: string;
+let sockets: WebSocketServer;
 test.beforeAll(async () => {
   server = createServer((_request, response) => { response.writeHead(302, { Location: remote }); response.end(); });
+  sockets = new WebSocketServer({ server });
+  sockets.on('connection', socket => socket.on('message', (data, isBinary) => socket.send(data, { binary: isBinary })));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw Error('Missing local redirect server');
   redirectURL = `http://127.0.0.1:${address.port}/redirect`;
 });
-test.afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
+test.afterAll(async () => {
+  for (const socket of sockets.clients) socket.terminate();
+  await new Promise<void>(resolve => sockets.close(() => resolve()));
+  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+});
 
 test('local HTTP redirect cannot escape to production', async ({ page, networkIsolation }) => {
   await page.goto(redirectURL).catch(() => {});
@@ -67,4 +76,63 @@ test('API helper disables automatic redirects before inspecting the response', a
   expect(networkIsolation.violations).toHaveLength(1);
   expect(networkIsolation.violations[0]).toContain('blocked API redirect');
   test.fail();
+});
+
+
+test('loopback realtime keeps native subprotocols and ordered text/binary frames', async ({ page }) => {
+  const result = await page.evaluate(url => new Promise<{ protocol: string; frames: unknown[] }>((resolve, reject) => {
+    const socket = new WebSocket(url, ['phoenix', 'synthetic-test']);
+    socket.binaryType = 'arraybuffer';
+    const frames: unknown[] = [];
+    socket.onopen = () => { socket.send('synthetic-first'); socket.send(new Uint8Array([4, 4, 1, 8])); };
+    socket.onerror = () => reject(Error('Local WebSocket failed'));
+    socket.onmessage = event => {
+      frames.push(typeof event.data === 'string' ? event.data : Array.from(new Uint8Array(event.data)));
+      if (frames.length === 2) { const protocol = socket.protocol; socket.close(); resolve({ protocol, frames }); }
+    };
+  }), redirectURL.replace('http:', 'ws:'));
+  expect(result).toEqual({ protocol: 'phoenix', frames: ['synthetic-first', [4, 4, 1, 8]] });
+});
+
+test('unmocked remote WebSocket fails even when its close event is handled', async ({ page, networkIsolation }) => {
+  await page.evaluate(() => new Promise<void>(resolve => {
+    const socket = new WebSocket('wss://production.invalid/socket');
+    socket.onerror = () => resolve();
+    socket.onclose = () => resolve();
+  }));
+  expect(networkIsolation.violations).toHaveLength(1);
+  expect(networkIsolation.violations[0]).toContain('blocked WebSocket');
+  test.fail();
+});
+
+
+test('guarded context drains response cleanup before closing and keeps routing installed', async () => {
+  const order: string[] = [];
+  let handler!: (route: Route) => Promise<void>;
+  let releaseFetch!: (value: unknown) => void;
+  let releaseDispose!: () => void;
+  const fetched = new Promise(resolve => { releaseFetch = resolve; });
+  const disposed = new Promise<void>(resolve => { releaseDispose = resolve; });
+  const context = {
+    request: { fetch: async () => { throw Error('Unused API helper'); } },
+    route: async (_pattern: string, callback: typeof handler) => { handler = callback; },
+    routeWebSocket: async (pattern: RegExp) => {
+      expect(pattern).toBeInstanceOf(RegExp);
+      expect(pattern.test('ws://127.0.0.1:54329/realtime')).toBe(false);
+      expect(pattern.test('wss://production.invalid/realtime')).toBe(true);
+    },
+    close: async () => { order.push('context closed'); },
+  } as unknown as BrowserContext;
+  await new NetworkIsolation().protectContext(context);
+  const work = handler({
+    request: () => ({ url: () => 'http://127.0.0.1:54329/local' }),
+    fetch: () => fetched,
+    fulfill: async () => { order.push('fulfilled'); },
+  } as unknown as Route);
+  const closing = context.close();
+  releaseFetch({ status: () => 200, dispose: async () => { order.push('disposing'); await disposed; order.push('disposed'); } });
+  await expect.poll(() => order).toEqual(['fulfilled', 'disposing']);
+  releaseDispose();
+  await Promise.all([work, closing]);
+  expect(order).toEqual(['fulfilled', 'disposing', 'disposed', 'context closed']);
 });
