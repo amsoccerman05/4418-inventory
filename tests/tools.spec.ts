@@ -42,8 +42,10 @@ test('TA-01 opens an audit, edits instantly, and verifies only that drawer',asyn
  await page.getByRole('button',{name:'Undo',exact:true}).click();
  await expect(count).toHaveValue('3');
  await row.getByRole('button',{name:'Add one 5/32" Allen wrench',exact:true}).click();
+ await expect(count).toHaveValue('4');
  const before=await readDb(page);
  await page.getByRole('button',{name:'Mark drawer verified'}).click();
+ await expect.poll(async()=>(await readDb(page)).items.filter((i:{locationId:string})=>i.locationId==='ta-01').every((i:{lastVerified:string})=>Date.now()-Date.parse(i.lastVerified)<10000)).toBe(true);
  const after=await readDb(page);
  expect(after.items.filter((i:{locationId:string;lastVerified:string})=>i.locationId==='ta-01').every((i:{lastVerified:string})=>Date.now()-Date.parse(i.lastVerified)<10000)).toBe(true);
  expect(after.items.filter((i:{locationId:string})=>i.locationId==='tb-01')).toEqual(before.items.filter((i:{locationId:string})=>i.locationId==='tb-01'));
@@ -66,7 +68,7 @@ test('hierarchical cards open children and retain quantity controls',async({page
  await expect(page.locator('.audit-row')).toHaveCount(6);
  await page.getByRole('button',{name:'View inventory',exact:true}).click();
  await page.getByRole('button',{name:'Add one 5/32" Allen wrench',exact:true}).click();
- expect((await readDb(page)).items.find((i:{name:string})=>i.name==='5/32" Allen wrench').quantity).toBe(4);
+ await expect.poll(async()=>(await readDb(page)).items.find((i:{name:string})=>i.name==='5/32" Allen wrench').quantity).toBe(4);
  await page.goto('/#location/storage-closet');
  await page.getByRole('button').filter({has:page.getByRole('heading',{name:'Left Side',exact:true})}).click();
  await page.getByRole('button').filter({has:page.getByRole('heading',{name:'Shelf 1',exact:true})}).click();
@@ -85,6 +87,7 @@ test('item fields and inventory filters persist independently',async({page})=>{
  await page.getByLabel('Target quantity (overall)',{exact:true}).fill('5');
  await page.getByLabel('Slot / Position (optional)').fill('T-02');
  await page.getByRole('button',{name:'Save changes',exact:true}).click();
+ await expect(page.getByRole('dialog')).toBeHidden();
  await page.reload();
  const saved=(await readDb(page)).items.find((i:{name:string})=>i.name==='BEST practice field measuring tape');
  expect(saved).toMatchObject({expectedQuantity:2,target:5,slot:'T-02',ownership:'BEST'});
@@ -99,6 +102,7 @@ test('new hierarchical drawers can be configured and receive items',async({page}
  await page.getByLabel('Name / Code').fill('TA-16');
  await page.getByLabel('Contents / Description').fill('Practice tools');
  await page.getByRole('button',{name:'Add location',exact:true}).click();
+ await expect.poll(async()=>(await readDb(page)).locations.find((l:{name:string})=>l.name==='TA-16')).toMatchObject({parentId:'toolbox-a'});
  const created=(await readDb(page)).locations.find((l:{name:string})=>l.name==='TA-16');
  expect(created.parentId).toBe('toolbox-a');
  await page.goto(`/#location/${created.id}`);
@@ -120,14 +124,18 @@ test('mobile audit and local official branding render correctly',async({page})=>
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
  await page.getByRole('button',{name:'Add one 5/32" Allen wrench',exact:true}).click();
  await expect(page.locator('.quantity-toast')).toContainText('4 each');
- await page.screenshot({path:'test-results/drawer-mobile.png',fullPage:true});
+ await expect.poll(()=>page.locator('.sidebar').evaluate(element=>element.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+ await page.screenshot({path:'test-results/drawer-mobile.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'Toggle navigation'}).click();
  const logo=page.locator('.suite-brand img');
  await expect(logo).toBeVisible();
  expect(await logo.evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  expect(await logo.getAttribute('src')).toContain('branding/4418-impulse-emblem.png');
  await page.getByRole('button',{name:'Dashboard',exact:true}).click();
- await expect(page.getByAltText('IMPULSE — FRC Team 4418')).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Everything in its place.',exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Team Hub / Home',exact:true})).toBeVisible();await expect(logo).toBeVisible();
+ await expect(page.getByRole('button',{name:'Toggle navigation',exact:true})).toBeVisible();
+ await expect.poll(()=>page.locator('.sidebar').evaluate(element=>element.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
 });
 
 test('drawer save failure leaves verification dates unchanged',async({page})=>{
