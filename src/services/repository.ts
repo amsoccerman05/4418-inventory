@@ -1,3 +1,4 @@
+import {localWrite} from './local-inventory-write';
 import {validateRestock,type RestockPolicy} from './setup-model';
 import {preparePhoto} from './media';
 import {localAction,syncLocalBalances} from './logistics-local';
@@ -11,15 +12,18 @@ const changed=(a:unknown,b:unknown)=>JSON.stringify(a)!==JSON.stringify(b);
 type LocalWithHistory=Database&{events?:InventoryEvent[]};
 export class LocalStorageInventoryRepository implements InventoryRepository {
  readonly mode='demo' as const;
- async load(){const db=local.load(); let changed=false; for(const l of db.locations){if(!l.labelCode){l.labelCode='L-'+createId().replaceAll('-','').slice(0,12).toUpperCase();changed=true;}}if(changed)local.save(db);return {...db,setupAvailable:true};}
- async setupItem(item:Item,policy:RestockPolicy,minimum:number,target:number){const error=validateRestock(policy,minimum,target);if(error)throw new Error(error);const before=local.load(),current=before.items.find(i=>i.id===item.id);if(!current||current.updatedAt!==item.updatedAt)throw new Error('This item changed. Review the latest settings.');await this.apply(before,{...before,items:before.items.map(i=>i.id===item.id?{...i,restockPolicy:policy,minimum,target,updatedAt:new Date().toISOString()}:i)});}
- async apply(before:Database,next:Database){
+ async load(){return localWrite(()=>{const db=local.load(); let changed=false; for(const l of db.locations){if(!l.labelCode){l.labelCode='L-'+createId().replaceAll('-','').slice(0,12).toUpperCase();changed=true;}}if(changed)local.save(db);return {...db,setupAvailable:true};});}
+ async setupItem(item:Item,policy:RestockPolicy,minimum:number,target:number){return localWrite(async()=>{const error=validateRestock(policy,minimum,target);if(error)throw new Error(error);const before=local.load(),current=before.items.find(i=>i.id===item.id);if(!current||current.updatedAt!==item.updatedAt)throw new Error('This item changed. Review the latest settings.');await this.applyUnlocked(before,{...before,items:before.items.map(i=>i.id===item.id?{...i,restockPolicy:policy,minimum,target,updatedAt:new Date().toISOString()}:i)});});}
+ async apply(before:Database,next:Database){return localWrite(()=>this.applyUnlocked(before,next));}
+ private async applyUnlocked(before:Database,next:Database){
+  const current=local.existing();const savedState=(value:Database)=>({...value,setupAvailable:undefined});if(current&&changed(savedState(current),savedState(before)))throw new Error('Workspace changed. Refresh before saving.');
   const events=[...((before as LocalWithHistory).events??[])];
   for(const i of next.items){const old=before.items.find(x=>x.id===i.id);if(!old||changed(old,i))events.push(this.event(i,old?i.quantity!==old.quantity?'quantity_changed':'item_updated':'item_created',old?.quantity??null));}
   local.save({...syncLocalBalances(before,next),events:events.slice(-500)} as LocalWithHistory);
  }
  private event(i:Item,type:string,before:number|null):InventoryEvent{return {id:createId(),itemId:i.id,itemName:i.name,areaId:i.areaId,userId:'local-demo',eventType:type,quantityBefore:before,quantityAfter:i.quantity,changeAmount:before===null?null:i.quantity-before,notes:'',createdAt:new Date().toISOString()};}
- async quantity(item:Item,change:{delta?:number;quantity?:number;verify?:boolean}){
+ async quantity(item:Item,change:{delta?:number;quantity?:number;verify?:boolean}){return localWrite(()=>this.quantityUnlocked(item,change));}
+ private async quantityUnlocked(item:Item,change:{delta?:number;quantity?:number;verify?:boolean}){
   const db=local.load();
   if(db.logistics&&item.balanceLocationId){
    const before=db.logistics.balances.find(b=>b.itemId===item.id&&b.locationId===item.balanceLocationId)?.quantity??0;
@@ -34,14 +38,15 @@ export class LocalStorageInventoryRepository implements InventoryRepository {
   const events=[...((db as LocalWithHistory).events??[]),this.event(saved,change.verify?'item_verified':'quantity_changed',current.quantity)];
   local.save({...syncLocalBalances(db,{...db,items:db.items.map(i=>i.id===item.id?saved:i)}),events:events.slice(-500)} as LocalWithHistory);return {before:current.quantity,item:saved};
  }
- async verifyDrawer(db:Database,id:string){
+ async verifyDrawer(db:Database,id:string){return localWrite(()=>this.verifyDrawerUnlocked(db,id));}
+ private async verifyDrawerUnlocked(db:Database,id:string){
   if(db.logistics){const current=local.load();const items=locationItems(current,id),expected=locationItems(db,id);if(items.length!==expected.length||items.some(i=>!expected.some(e=>e.id===i.id&&e.updatedAt===i.updatedAt)))throw new Error('Location contents changed');const now=new Date().toISOString();for(const item of items){const b=current.logistics!.balances.find(b=>b.itemId===item.id&&b.locationId===id);if(b){b.lastVerified=now;b.lastVerifiedBy='local-demo';}const i=current.items.find(i=>i.id===item.id)!;i.updatedAt=now;if(i.locationId===id)i.lastVerified=now;}local.save(current);return;}
   const current=local.load();const expected=db.items.filter(i=>i.locationId===id);const actual=current.items.filter(i=>i.locationId===id);
   if(expected.length!==actual.length||actual.some(i=>!expected.some(x=>x.id===i.id&&x.updatedAt===i.updatedAt)))throw new Error('Drawer contents changed. Review the latest counts.');
   const next=markDrawer(current,id);const events=[...((current as LocalWithHistory).events??[]),...next.items.filter(i=>i.locationId===id).map(i=>this.event(i,'drawer_verified',i.quantity))];
   local.save({...next,events:events.slice(-500)} as LocalWithHistory);
  }
- async action(action:InventoryAction|'enable',data:ActionData){local.save(localAction(local.load(),action,data));}
+ async action(action:InventoryAction|'enable',data:ActionData){await localWrite(()=>{local.save(localAction(local.load(),action,data));});}
  async photoUrl(path:string){return path;}
  async savePhoto(){throw new Error('Photo uploads require the shared Supabase workspace.');}
  async deletePhoto(){throw new Error('Photo uploads require the shared Supabase workspace.');}

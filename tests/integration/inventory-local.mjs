@@ -10,6 +10,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { CLI_VERSION, API_PORT, DB_PORT, ORIGIN, localStatus, isolatedEnvironment } from './inventory-safety.mjs';
 import { inventoryMigrations } from './inventory-sources.mjs';
 import { runInventoryIntegration } from './inventory-stack.mjs';
+import { phase3Migration, phase3SourceFiles, installPhase3Prerequisites } from './phase3-sources.mjs';
+import { runPhase3Integration } from './phase3-restock.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const mode = process.argv[2] || '--run';
@@ -52,6 +54,7 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(s
 try {
   const sources = [
     ...inventoryMigrations.map(name => `supabase/migrations/${name}`),
+    ...phase3SourceFiles, 'tests/integration/phase3-native-support.mjs', 'tests/native/phase3-concurrency.mjs',
     ...['inventory-local.mjs', 'inventory-safety.mjs', 'inventory-sources.mjs', 'inventory-stack.mjs'].map(name => `tests/integration/${name}`),
   ];
   const hashes = Object.fromEntries(sources.map(path => [path, createHash('sha256').update(readFileSync(join(repo, path))).digest('hex')]));
@@ -125,8 +128,13 @@ enabled = false
       const authFunction = sql("select pg_get_functiondef('auth.uid()'::regprocedure)");
       assert(!authFunction.includes('test.uid'), 'Mock auth.uid is forbidden');
       for (const name of inventoryMigrations) sql(readFileSync(join(repo, 'supabase/migrations', name), 'utf8'));
+      installPhase3Prerequisites({ sql, readSource: path => readFileSync(join(repo, path), 'utf8') });
+      sql(readFileSync(join(repo, 'supabase/migrations', phase3Migration), 'utf8'));
       sql("notify pgrst, 'reload schema';");
-      const checks = await runInventoryIntegration({ ...status, sql, registerSecret: value => secrets.push(value) });
+      const context = { ...status, sql, registerSecret: value => secrets.push(value) };
+      const phase1Checks = await runInventoryIntegration(context);
+      const phase3Checks = await runPhase3Integration(context);
+      const checks = { phase1: phase1Checks, phase3: phase3Checks };
       assert.equal(sql("select pg_get_functiondef('auth.uid()'::regprocedure)"), authFunction, 'Auth function changed');
       const image = JSON.parse(docker(['inspect', `supabase_db_${project}`]))[0].Config.Image;
       report = { status: 'PASS_REAL_SUPABASE_INTEGRATION', cli: version, node: process.version, postgres_image: image, checks, source_sha256: hashes };

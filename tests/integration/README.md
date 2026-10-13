@@ -22,6 +22,12 @@ This creates a new private Unix-socket-only cluster with no TCP listener. Its Au
 
 ## CI and artifacts
 
-`.github/workflows/inventory-workflows-check.yml` has independent database, browser, and real-API jobs. Browser tests still run if a database job fails. Each browser suite uses its own output directory so later runs preserve earlier screenshots. The `inventory-synthetic-browser-review` artifact contains desktop, mobile, print, and failure evidence produced by the suites. All three jobs must pass for complete verification.
+`.github/workflows/inventory-workflows-check.yml` has independent database, browser, and real-API jobs. Browser tests still run if a database job fails. Each browser suite uses its own output directory so later runs preserve earlier screenshots. The `inventory-synthetic-browser-review` artifact contains desktop, mobile, print, and failure evidence produced by the suites. All three jobs must pass for complete verification. The phase 3 release additionally runs the actual Restock/purchasing browser integration, the phase 3 native concurrency runner and the phase 3 real-API suite.
 
 The embedded PostgreSQL security suite and mock shared-browser suite remain useful complementary checks. Neither replaces the real Auth/PostgREST job, native concurrent-session tests, or visual review of generated screenshots.
+
+## Phase 3 purchasing and receiving
+
+The existing `inventory-local.mjs --run` runner applies baseline/phase 1, schema-only Finance prerequisites from `phase3-sources.mjs` (including exact live Team Hub authority and current enqueue overlays), then the phase 3 migration. Both `runInventoryIntegration` and `runPhase3Integration` must pass. The JSON report identifies each suite and hashes all migration, fixture and phase 3 harness sources.
+
+Run `INVENTORY_PG_BIN=/path/to/postgresql/bin node tests/native/phase3-concurrency.mjs` for receipt version races, repeated final receipt IDs, delivery-reference duplicates, queued permission revocation, stock-unit changes, Finance revision changes and close-short races. It owns a fresh Unix-socket-only cluster and outputs source hashes; it does not accept a connection string or existing server. No real native/HTTP execution is claimed from syntax checks, PGlite tests or preflight failures.

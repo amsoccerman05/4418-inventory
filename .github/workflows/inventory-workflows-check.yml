@@ -37,6 +37,7 @@ jobs:
           PG_BIN="$(find /usr/lib/postgresql -path '*/bin/postgres' -type f -printf '%h\n' | sort -V | tail -1)"
           test -n "$PG_BIN" || { echo 'No installed PostgreSQL server binary found'; exit 1; }
           INVENTORY_PG_BIN="$PG_BIN" node tests/native/inventory-concurrency.mjs
+          INVENTORY_PG_BIN="$PG_BIN" node tests/native/phase3-concurrency.mjs
 
   browser-checks:
     runs-on: ubuntu-latest
@@ -62,6 +63,9 @@ jobs:
       - name: Verify existing logistics contracts
         if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
         run: npm run test:logistics -- --output=test-results/logistics
+      - name: Verify purchasing and receiving screens
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:purchasing -- --output=test-results/purchasing
       - uses: actions/upload-artifact@v4
         if: always()
         with:
