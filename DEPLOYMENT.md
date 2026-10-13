@@ -54,8 +54,19 @@ If development uses `127.0.0.1`, add the two matching `http://127.0.0.1:5173/` v
 
 Sign in as a mentor and explicitly add toolbox demo data or migrate the existing local V0 inventory. Invite student/lead/readonly accounts and assign roles in Admin. On two devices, check a student's quantity decrement reaches the other device, is attributed in history, and appears as Missing tools in the drawer. Verify item/drawer audit timestamps, refresh session restoration, sign-out, and actual password-reset email delivery. Local contract tests cover these app paths, but cannot prove the remote project is configured until its schema and test accounts exist.
 
-No QR codes, serialized assets, checkout, full purchasing workflow, Onshape integration, invitation backend or advanced analytics are included in V1.
+Serialized assets, Onshape integration, invitation backend and advanced analytics remain outside this release. For setup, purchasing, packing templates and tool checkout prerequisites, use the current README and linked feature contracts.
 
 ## Enable photos, balances and trips
 
 Migrations 004 and 005 have been applied to production. For another existing V1 workspace, follow [the owner upgrade guide](supabase/UPGRADE_LOGISTICS.md). No additional GitHub variables, DNS or Auth URL changes are required.
+
+## Quality-of-life release order
+
+After existing migrations 001–005, use this dependency order:
+
+1. `20261013234406_inventory_setup.sql`
+2. `20261013234530_inventory_restock_finance_receiving.sql`, after verifying the current Finance prerequisites in [the purchasing contract](docs/PURCHASING.md)
+3. `20261013234533_packing_templates.sql`
+4. `20261013234535_tool_checkouts.sql`
+
+The setup migration is limited to restock policy and setup support. Verify read-only pre/post fingerprints and capability probes before deploying. Retain existing production data; do not create orders, receipts or stock changes simply to test a release. See [the setup contract](docs/setup-backend.md) for its exact invariants and rollback guidance.

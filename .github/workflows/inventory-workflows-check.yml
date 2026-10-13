@@ -1,0 +1,138 @@
+name: Check inventory workflows
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'supabase/migrations/**'
+      - 'tests/**'
+      - 'playwright*.config.ts'
+      - 'vite.config.ts'
+      - 'package*.json'
+      - '.github/workflows/inventory-workflows-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: inventory-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  database-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_INVENTORY_MODE: demo
+      - run: npm run test:models
+      - run: npm run test:security
+      - run: node --test tests/integration/inventory-safety.test.mjs
+  native-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [inventory, phase3, phase4, phase5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify isolation guards
+        run: node --test tests/integration/inventory-safety.test.mjs
+      - name: Verify independent real PostgreSQL sessions
+        run: |
+          set -o pipefail
+          mkdir -p test-results/native
+          PG_BIN="$(find /usr/lib/postgresql -path '*/bin/postgres' -type f -printf '%h\n' | sort -V | tail -1)"
+          test -n "$PG_BIN" || { echo 'No installed PostgreSQL server binary found'; exit 1; }
+          INVENTORY_PG_BIN="$PG_BIN" node tests/native/${{ matrix.suite }}-concurrency.mjs 2>&1 | tee test-results/native/${{ matrix.suite }}.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-native-${{ matrix.suite }}
+          path: test-results/native/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_INVENTORY_MODE: demo
+      - id: browser-install
+        run: npx playwright install --with-deps chromium
+      - name: Verify demo workflows and capture desktop and mobile review
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:e2e -- --output=test-results/demo
+      - name: Verify existing shared-workspace contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:shared -- --output=test-results/shared
+      - name: Verify existing logistics contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:logistics -- --output=test-results/logistics
+      - name: Verify purchasing and receiving screens
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:purchasing -- --output=test-results/purchasing
+      - name: Verify reusable packing templates
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:packing -- --output=test-results/packing
+      - name: Verify shared packing contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:packing-shared -- --output=test-results/packing-shared
+      - name: Verify tool checkout and return screens
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:checkouts -- --output=test-results/checkouts
+      - name: Verify shared tool checkout contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:checkouts-shared -- --output=test-results/checkouts-shared
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-synthetic-browser-review
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  real-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
+        with:
+          version: '2.119.0'
+      - name: Verify local-only isolation guards
+        run: node --test tests/integration/inventory-safety.test.mjs
+      - name: Verify all stages sequentially with real disposable Auth and PostgREST
+        run: |
+          set -o pipefail
+          mkdir -p test-results/real-api
+          node tests/integration/inventory-local.mjs --run --through-phase=5 2>&1 | tee test-results/real-api/all-phases.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-real-api-and-provenance
+          path: test-results/real-api/
+          if-no-files-found: ignore
+          retention-days: 7

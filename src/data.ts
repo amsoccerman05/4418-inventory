@@ -1,3 +1,4 @@
+import type {RestockPolicy} from './services/setup-model';
 import type {Logistics, LocationClass} from './services/logistics-model';
 import { createId } from './utils/id';
 export interface Area { id: string; name: string; lead: string; slug?: string }
@@ -5,7 +6,7 @@ export const locationKinds = ['Storage', 'Side', 'Shelf', 'Bin', 'Drawer'] as co
 export interface Location { classification?:LocationClass; areaId?:string; tripId?:string; active?:boolean; id: string; room: string; storage: string; bin: string; name?: string; parentId?: string | null; kind?: typeof locationKinds[number]; description?: string }
 export const itemTypes = ['Part', 'Consumable', 'Raw Material', 'Tool', 'Asset'] as const;
 export const ownerships = ['Shared / School', 'FRC 4418', 'BEST'] as const;
-export interface Item { totalQuantity?:number; homeLocationId?:string; balanceLocationId?:string; assignedElsewhere?:number; id: string; name: string; areaId: string; category: string; quantity: number; unit: string; minimum: number; target: number; locationId: string; manufacturer: string; partNumber: string; vendor: string; url: string; cost: number; notes: string; updatedAt: string; lastVerified: string; updatedBy: string; orderStatus?: OrderState; trackingMode?: 'quantity' | 'individual'; itemType: typeof itemTypes[number]; ownership: typeof ownerships[number]; expectedQuantity: number | null; slot: string; lastVerifiedBy?:string; legacyUpdatedBy?:string }
+export interface Item { restockPolicy?:RestockPolicy; totalQuantity?:number; homeLocationId?:string; balanceLocationId?:string; assignedElsewhere?:number; id: string; name: string; areaId: string; category: string; quantity: number; unit: string; minimum: number; target: number; locationId: string; manufacturer: string; partNumber: string; vendor: string; url: string; cost: number; notes: string; updatedAt: string; lastVerified: string; updatedBy: string; orderStatus?: OrderState; trackingMode?: 'quantity' | 'individual'; itemType: typeof itemTypes[number]; ownership: typeof ownerships[number]; expectedQuantity: number | null; slot: string; lastVerifiedBy?:string; legacyUpdatedBy?:string }
 export const orderStates = ['Needs Order', 'Ordered', 'Received'] as const;
 export type OrderState = typeof orderStates[number];
 export const orderStatus = (item: Item): OrderState => item.orderStatus ?? 'Needs Order';
@@ -14,13 +15,13 @@ export const orderStatus = (item: Item): OrderState => item.orderStatus ?? 'Need
 export interface InventoryAsset { id: string; itemId: Item['id']; serialNumber?: string; assetTag?: string; locationId?: Location['id'] }
 export function migrateItem(item: Item & { verifiedAt?: string }): Item {
  const { verifiedAt, ...current } = item;
- return { ...current, lastVerified: current.lastVerified ?? verifiedAt ?? '', orderStatus: current.orderStatus || 'Needs Order', trackingMode: current.trackingMode || 'quantity', itemType: current.itemType || (current.category === 'Tools' ? 'Tool' : 'Part'), ownership: current.ownership || 'FRC 4418', expectedQuantity: current.expectedQuantity ?? null, slot: current.slot ?? '' };
+ return { ...current, restockPolicy:current.restockPolicy??'unset', lastVerified: current.lastVerified ?? verifiedAt ?? '', orderStatus: current.orderStatus || 'Needs Order', trackingMode: current.trackingMode || 'quantity', itemType: current.itemType || (current.category === 'Tools' ? 'Tool' : 'Part'), ownership: current.ownership || 'FRC 4418', expectedQuantity: current.expectedQuantity ?? null, slot: current.slot ?? '' };
 }
-export const filterRestock = (items: Item[], areaId = '', state: OrderState | '' = '') => items.filter(item => status(item) !== 'GOOD' && (!areaId || item.areaId === areaId) && (!state || orderStatus(item) === state));
-export interface Database { logistics?:Logistics; version: 1; items: Item[]; areas: Area[]; categories: string[]; locations: Location[] }
+export const filterRestock = (items: Item[], areaId = '', state: OrderState | '' = '') => items.filter(item => item.restockPolicy !== 'do_not_restock' && status(item) !== 'GOOD' && (!areaId || item.areaId === areaId) && (!state || orderStatus(item) === state));
+export interface Database { setupAvailable?:boolean; logistics?:Logistics; version: 1; items: Item[]; areas: Area[]; categories: string[]; locations: Location[] }
 export const status = (i: Item) => (i.totalQuantity??i.quantity) === 0 ? 'OUT' : (i.totalQuantity??i.quantity) <= i.minimum ? 'LOW' : 'GOOD';
 export const needsVerification = (i: Item) => !i.lastVerified || Date.now() - new Date(i.lastVerified).getTime() > 90 * 86400000;
-export const blankItem = (): Item => ({id: createId(), name:'',areaId:'power',category:'',quantity:0,unit:'each',minimum:0,target:0,locationId:'',manufacturer:'',partNumber:'',vendor:'',url:'',cost:0,notes:'',updatedAt:new Date().toISOString(),lastVerified:'',updatedBy:'',orderStatus:'Needs Order',trackingMode:'quantity',itemType:'Part',ownership:'FRC 4418',expectedQuantity:null,slot:''});
+export const blankItem = (): Item => ({restockPolicy:'unset',id: createId(), name:'',areaId:'power',category:'',quantity:0,unit:'each',minimum:0,target:0,locationId:'',manufacturer:'',partNumber:'',vendor:'',url:'',cost:0,notes:'',updatedAt:new Date().toISOString(),lastVerified:'',updatedBy:'',orderStatus:'Needs Order',trackingMode:'quantity',itemType:'Part',ownership:'FRC 4418',expectedQuantity:null,slot:''});
 export function demo(): Database {
  const names = ['Fabrication','Power','Software','Operations','CAD','Strategy','Finance','Business','Communications','General / Admin'];
  const areas = names.map(name => ({id:name.toLowerCase().replace(/\W+/g,'-'),name,lead:''}));
@@ -44,7 +45,7 @@ export const repository: LocalSnapshotRepository = {
  save(db) { localStorage.setItem(KEY,JSON.stringify(db)); },
  existing() { return localStorage.getItem(KEY) ? this.load() : null; }
 };
-export const csvFields = ['id','name','areaId','category','quantity','unit','minimum','target','locationId','manufacturer','partNumber','vendor','url','cost','notes','updatedAt','lastVerified','updatedBy','orderStatus','trackingMode','itemType','ownership','expectedQuantity','slot'] as const;
+export const csvFields = ['id','name','areaId','category','quantity','unit','minimum','target','locationId','manufacturer','partNumber','vendor','url','cost','notes','updatedAt','lastVerified','updatedBy','orderStatus','trackingMode','itemType','ownership','expectedQuantity','slot','restockPolicy'] as const;
 export function exportCsv(items: Item[]) { return '\uFEFF'+[csvFields.join(','),...items.map(i=>csvFields.map(k=>'"'+String(k === 'orderStatus' ? orderStatus(i) : (i[k] ?? '')).replaceAll('"','""')+'"').join(','))].join('\r\n'); }
 export function importCsv(text: string, db: Database): Item[] {
  const rows: string[][]=[]; let row:string[]=[],cell='',quoted=false;
@@ -59,6 +60,8 @@ export function importCsv(text: string, db: Database): Item[] {
  const item={...(existing??blankItem()),...Object.fromEntries(csvFields.filter(k=>k!=='id'&&values[k]!==undefined).map(k=>[k,values[k]]))} as Item;
  if(suppliedId)item.id=suppliedId;
  if(importedIds.has(item.id))throw new Error(`Row ${n+2}: duplicate item ID ${item.id}`);importedIds.add(item.id);for(const k of ['quantity','minimum','target','cost'] as const){item[k]=values[k]===undefined?item[k]:Number(values[k]||0);if(!Number.isFinite(item[k])||item[k]<0)throw new Error(`Row ${n+2}: invalid ${k}`);}if(!item.name.trim()||!item.category.trim()||!values.quantity?.trim())throw new Error(`Row ${n+2}: name, category and quantity are required.`);if(!db.areas.some(a=>a.id===item.areaId))throw new Error(`Row ${n+2}: unknown areaId ${item.areaId}`);if(item.locationId&&!db.locations.some(l=>l.id===item.locationId))throw new Error(`Row ${n+2}: unknown locationId`);if(item.orderStatus&&!orderStates.includes(item.orderStatus))throw new Error(`Row ${n+2}: unknown orderStatus`);if(item.trackingMode&&!['quantity','individual'].includes(item.trackingMode))throw new Error(`Row ${n+2}: unknown trackingMode`);if(values.expectedQuantity?.trim()){item.expectedQuantity=Number(values.expectedQuantity);if(!Number.isFinite(item.expectedQuantity)||item.expectedQuantity<0)throw new Error(`Row ${n+2}: invalid expectedQuantity`);}else if(values.expectedQuantity!==undefined)item.expectedQuantity=null;
+ if(item.restockPolicy&&!['unset','restock','do_not_restock'].includes(item.restockPolicy))throw new Error(`Row ${n+2}: unknown restockPolicy`);
+ if(item.restockPolicy==='restock'&&item.target<=item.minimum)throw new Error(`Row ${n+2}: target must exceed minimum for restock`);
  if(item.itemType&&!itemTypes.includes(item.itemType))throw new Error(`Row ${n+2}: unknown itemType`);
  if(item.ownership&&!ownerships.includes(item.ownership))throw new Error(`Row ${n+2}: unknown ownership`);
  return migrateItem(item);});

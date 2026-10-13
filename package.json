@@ -8,9 +8,21 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test:security": "node --test tests/*security.test.mjs",
+    "test:security": "node --test --test-concurrency=1 tests/*security.test.mjs",
     "test:shared": "playwright test --config playwright.shared.config.ts",
-    "test:logistics": "playwright test --config playwright.logistics.config.ts"
+    "test:logistics": "playwright test --config playwright.logistics.config.ts",
+    "test:purchasing": "playwright test --config playwright.purchasing.config.ts",
+    "test:purchasing:native": "node tests/native/phase3-concurrency.mjs",
+    "test:integration:guards": "node --test tests/integration/inventory-safety.test.mjs",
+    "test:integration:real": "node tests/integration/inventory-local.mjs --run",
+    "test:native:phase3": "node tests/native/phase3-concurrency.mjs",
+    "test:native:phase4": "node tests/native/phase4-concurrency.mjs",
+    "test:native:phase5": "node tests/native/phase5-concurrency.mjs",
+    "test:packing": "playwright test --config playwright.packing.config.ts",
+    "test:packing-shared": "playwright test --config playwright.packing-shared.config.ts",
+    "test:checkouts": "playwright test --config playwright.tool-checkouts.config.ts",
+    "test:checkouts-shared": "TEST_TOOL_SHARED=1 playwright test --config playwright.tool-checkouts.config.ts",
+    "test:models": "playwright test --config playwright.models.config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
