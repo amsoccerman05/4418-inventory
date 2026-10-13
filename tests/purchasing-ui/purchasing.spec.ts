@@ -21,7 +21,11 @@ test('configure → request → draft → two approvals → partial receiving su
  await page.screenshot({path:'test-results/purchasing-partial-mobile.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'Receive delivery',exact:true}).click();
  await expect(page.getByRole('dialog').getByRole('combobox',{name:'Receiving location',exact:true})).toBeVisible();
- await page.screenshot({path:'test-results/purchasing-receive-mobile.png',fullPage:true,animations:'disabled'});
+ const dialogBounds=await page.getByRole('dialog').boundingBox();
+ expect(dialogBounds!.x).toBeGreaterThanOrEqual(0);expect(dialogBounds!.x+dialogBounds!.width).toBeLessThanOrEqual(390);
+ expect(dialogBounds!.y).toBeGreaterThanOrEqual(0);expect(dialogBounds!.y+dialogBounds!.height).toBeLessThanOrEqual(844);
+ await expect(page.getByRole('dialog').getByRole('button',{name:'Receive delivery',exact:true})).toBeInViewport();
+ await page.screenshot({path:'test-results/purchasing-receive-mobile.png',fullPage:false,animations:'disabled'});
  await page.getByRole('dialog').getByRole('button',{name:'Back',exact:true}).click();
 });
 test('closing setup leaves no request or stock change, mobile has no page overflow',async({page})=>{

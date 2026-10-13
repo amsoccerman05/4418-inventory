@@ -23,6 +23,12 @@ test('actual Restock screen supports deliberate legacy reconciliation and a Fina
  for(const width of [1440,390]){
   await page.setViewportSize({width,height:1000});
   if(width===390)await expect.poll(()=>page.locator('.sidebar').evaluate(element=>element.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);
+  const header=await page.locator('.suite-header').boundingBox();
+  const heading=await page.getByRole('heading',{name:'Keep the build moving.',exact:true}).boundingBox();
+  expect(header!.y).toBe(0);expect(heading!.y).toBeGreaterThanOrEqual(header!.height);
+  if(width===390)await expect(page.getByRole('button',{name:'Toggle navigation',exact:true})).toBeInViewport();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   await page.screenshot({path:`test-results/purchasing-full-app-${width}.png`,fullPage:true,animations:'disabled'});
  }
