@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './browser-fixtures';
 import { demo, type Database } from '../src/data';
 const key='frc-4418-inventory-v1';
 const name='5/32" Allen wrench';
@@ -28,7 +28,7 @@ test('removing several tools distinguishes missing, low, and out',async({page})=
 });
 
 test('moving between drawers preserves ID and updates both hierarchies',async({page})=>{
- await page.goto('/#location/ta-01');const before=await readDb(page);const item=before.items.find(i=>i.name===name)!;
+ await page.goto('/#location/ta-01');await expect(rowFor(page,name)).toBeVisible();const before=await readDb(page);const item=before.items.find(i=>i.name===name)!;
  await page.getByRole('button',{name,exact:true}).click();
  await page.getByLabel('Location / Bin').selectOption('tb-15');
  await page.getByLabel('Slot / Position (optional)').fill('B-05');
@@ -99,7 +99,7 @@ test('a 20-line drawer stays quick to navigate, correct, and verify',async({page
 });
 
 test('CSV export and re-import preserve IDs and all relationships without duplicates',async({page})=>{
- await page.goto('/#admin');const before=await readDb(page);
+ await page.goto('/#admin');await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeVisible();const before=await readDb(page);
  const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();
  const download=await downloading;const path=await download.path();expect(path).toBeTruthy();
  await page.locator('input[type=file]').setInputFiles(path!);

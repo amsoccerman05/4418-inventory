@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 import { demo, exportCsv, importCsv, filterRestock } from '../src/data';
 
 const key = 'frc-4418-inventory-v1';
@@ -34,8 +34,8 @@ test('repeated adjustments persist and Undo reverses only the most recent change
   await plus.click();
   await expect(page.locator('.quantity-toast')).toContainText('10 each');
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  expect((await savedItem(page, 'Kraken X60')).quantity).toBe(9);
   await expect(page.locator('.quantity-toast')).toContainText('Undone');
+  expect((await savedItem(page, 'Kraken X60')).quantity).toBe(9);
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
   await page.reload();
   const row = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Kraken X60', exact: true }) });
@@ -72,10 +72,11 @@ test('Verify quantity saves immediately, including the entered count', async ({ 
 
 test('restock filters and exported CSV contain only displayed items', async ({ page }) => {
   await page.goto('/#restock');
+  const restockTable = page.getByRole('table').filter({ has: page.getByRole('columnheader', { name: 'Item / Area', exact: true }) });
   await page.getByLabel('Restock area').selectOption('power');
   await page.getByLabel('Restock order status').selectOption('Ordered');
-  await expect(page.locator('tbody tr')).toHaveCount(1);
-  await expect(page.locator('tbody')).toContainText('NEO Vortex');
+  await expect(restockTable.locator('tbody tr')).toHaveCount(1);
+  await expect(restockTable.locator('tbody')).toContainText('NEO Vortex');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export restock list' }).click();
   const download = await downloadPromise;
@@ -87,10 +88,10 @@ test('restock filters and exported CSV contain only displayed items', async ({ p
   expect(exported.map(i => i.name)).toEqual(['NEO Vortex']);
   expect(exported[0].orderStatus).toBe('Ordered');
   await page.getByLabel('Restock order status').selectOption('Received');
-  await expect(page.locator('tbody tr')).toHaveCount(0);
+  await expect(restockTable.locator('tbody tr')).toHaveCount(0);
   await expect(page.getByText('No items match these filters')).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
-  await expect(page.locator('tbody tr')).toHaveCount(filterRestock(demo().items).length);
+  await expect(restockTable.locator('tbody tr')).toHaveCount(filterRestock(demo().items).length);
 });
 
 test('existing verifiedAt data and CSV migrate without losing verification', async ({ page }) => {
@@ -119,6 +120,7 @@ test('existing verifiedAt data and CSV migrate without losing verification', asy
 
 test('failed saves leave quantities unchanged and never offer Undo', async ({ page }) => {
   await page.goto('/#inventory');
+  await expect(page.getByRole('button', { name: 'Add one Kraken X60', exact: true })).toBeEnabled();
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('Storage is full'); }; });
   await page.getByRole('button', { name: 'Add one Kraken X60', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Storage is full');
@@ -137,5 +139,6 @@ test('mobile controls and toast fit the viewport', async ({ page }) => {
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(toast).toContainText('Undone');
   expect((await savedItem(page, '1/2" hex bearings')).quantity).toBe(48);
 });

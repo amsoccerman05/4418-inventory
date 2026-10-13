@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 import { demo, exportCsv, importCsv, mergeImportedItems, possibleDuplicates } from '../src/data';
 
 test('CSV preserves identity, accepts legacy rows, and rejects broken references atomically',()=>{

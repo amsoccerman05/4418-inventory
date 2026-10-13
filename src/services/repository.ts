@@ -1,3 +1,7 @@
+import {localToolAction} from './tool-checkouts-local';
+import {toolLoanFromRow,type ToolAction,type ToolActionData} from './tool-checkouts-model';
+import {localWrite} from './local-inventory-write';
+import {validateRestock,type RestockPolicy} from './setup-model';
 import {preparePhoto} from './media';
 import {localAction,syncLocalBalances} from './logistics-local';
 import {locationItems,type InventoryAction,type ActionData,type Media} from './logistics-model';
@@ -10,14 +14,19 @@ const changed=(a:unknown,b:unknown)=>JSON.stringify(a)!==JSON.stringify(b);
 type LocalWithHistory=Database&{events?:InventoryEvent[]};
 export class LocalStorageInventoryRepository implements InventoryRepository {
  readonly mode='demo' as const;
- async load(){return local.load();}
- async apply(before:Database,next:Database){
+ async toolAction(action:ToolAction,data:ToolActionData){await localWrite(()=>{local.save(localToolAction(local.load(),action,data));},true);}
+ async load(){return localWrite(()=>{const saved=local.existing(),db=saved??local.load();if(!saved)local.save(db);return {...db,setupAvailable:true};});}
+ async setupItem(item:Item,policy:RestockPolicy,minimum:number,target:number){return localWrite(async()=>{const error=validateRestock(policy,minimum,target);if(error)throw new Error(error);const before=local.load(),current=before.items.find(i=>i.id===item.id);if(!current||current.updatedAt!==item.updatedAt)throw new Error('This item changed. Review the latest settings.');await this.applyUnlocked(before,{...before,items:before.items.map(i=>i.id===item.id?{...i,restockPolicy:policy,minimum,target,updatedAt:new Date().toISOString()}:i)});});}
+ async apply(before:Database,next:Database){return localWrite(()=>this.applyUnlocked(before,next));}
+ private async applyUnlocked(before:Database,next:Database){
+  const current=local.existing();const savedState=(value:Database)=>({...value,setupAvailable:undefined});if(current&&changed(savedState(current),savedState(before)))throw new Error('Workspace changed. Refresh before saving.');
   const events=[...((before as LocalWithHistory).events??[])];
   for(const i of next.items){const old=before.items.find(x=>x.id===i.id);if(!old||changed(old,i))events.push(this.event(i,old?i.quantity!==old.quantity?'quantity_changed':'item_updated':'item_created',old?.quantity??null));}
   local.save({...syncLocalBalances(before,next),events:events.slice(-500)} as LocalWithHistory);
  }
  private event(i:Item,type:string,before:number|null):InventoryEvent{return {id:createId(),itemId:i.id,itemName:i.name,areaId:i.areaId,userId:'local-demo',eventType:type,quantityBefore:before,quantityAfter:i.quantity,changeAmount:before===null?null:i.quantity-before,notes:'',createdAt:new Date().toISOString()};}
- async quantity(item:Item,change:{delta?:number;quantity?:number;verify?:boolean}){
+ async quantity(item:Item,change:{delta?:number;quantity?:number;verify?:boolean}){return localWrite(()=>this.quantityUnlocked(item,change));}
+ private async quantityUnlocked(item:Item,change:{delta?:number;quantity?:number;verify?:boolean}){
   const db=local.load();
   if(db.logistics&&item.balanceLocationId){
    const before=db.logistics.balances.find(b=>b.itemId===item.id&&b.locationId===item.balanceLocationId)?.quantity??0;
@@ -32,14 +41,15 @@ export class LocalStorageInventoryRepository implements InventoryRepository {
   const events=[...((db as LocalWithHistory).events??[]),this.event(saved,change.verify?'item_verified':'quantity_changed',current.quantity)];
   local.save({...syncLocalBalances(db,{...db,items:db.items.map(i=>i.id===item.id?saved:i)}),events:events.slice(-500)} as LocalWithHistory);return {before:current.quantity,item:saved};
  }
- async verifyDrawer(db:Database,id:string){
+ async verifyDrawer(db:Database,id:string){return localWrite(()=>this.verifyDrawerUnlocked(db,id));}
+ private async verifyDrawerUnlocked(db:Database,id:string){
   if(db.logistics){const current=local.load();const items=locationItems(current,id),expected=locationItems(db,id);if(items.length!==expected.length||items.some(i=>!expected.some(e=>e.id===i.id&&e.updatedAt===i.updatedAt)))throw new Error('Location contents changed');const now=new Date().toISOString();for(const item of items){const b=current.logistics!.balances.find(b=>b.itemId===item.id&&b.locationId===id);if(b){b.lastVerified=now;b.lastVerifiedBy='local-demo';}const i=current.items.find(i=>i.id===item.id)!;i.updatedAt=now;if(i.locationId===id)i.lastVerified=now;}local.save(current);return;}
   const current=local.load();const expected=db.items.filter(i=>i.locationId===id);const actual=current.items.filter(i=>i.locationId===id);
   if(expected.length!==actual.length||actual.some(i=>!expected.some(x=>x.id===i.id&&x.updatedAt===i.updatedAt)))throw new Error('Drawer contents changed. Review the latest counts.');
   const next=markDrawer(current,id);const events=[...((current as LocalWithHistory).events??[]),...next.items.filter(i=>i.locationId===id).map(i=>this.event(i,'drawer_verified',i.quantity))];
   local.save({...next,events:events.slice(-500)} as LocalWithHistory);
  }
- async action(action:InventoryAction|'enable',data:ActionData){local.save(localAction(local.load(),action,data));}
+ async action(action:InventoryAction|'enable',data:ActionData){await localWrite(()=>{local.save(localAction(local.load(),action,data));});}
  async photoUrl(path:string){return path;}
  async savePhoto(){throw new Error('Photo uploads require the shared Supabase workspace.');}
  async deletePhoto(){throw new Error('Photo uploads require the shared Supabase workspace.');}
@@ -50,19 +60,25 @@ export class LocalStorageInventoryRepository implements InventoryRepository {
 }
 export class SupabaseInventoryRepository implements InventoryRepository {
  readonly mode='supabase' as const;
+ async toolAction(action:ToolAction,data:ToolActionData){const {error}=await this.client().rpc('tool_checkout_action',{p_action:action,p_data:data});if(error)throw error;}
  private client(){if(!supabase)throw new Error('Supabase is not configured.');return supabase;}
  private async rows(table:string):Promise<Row[]>{
   const result:Row[]=[];let page=0;
   while(true){const {data,error}=await this.client().from(table).select('*').order(table==='categories'?'name':'id').range(page*1000,page*1000+999);if(error)throw error;result.push(...(data as Row[]));if(data.length<1000)return result;page++;}
  }
  private features: boolean|undefined;
+ private toolCheckouts: boolean|undefined;
+ private setupFeatures:boolean|undefined;
  async load():Promise<Database>{
   if(this.features===undefined){const {data,error}=await this.client().rpc('inventory_features');if(error&&error.code!=='PGRST202'&&error.code!=='42883')throw error;this.features=!error&&data>=4;}
+  if(this.setupFeatures===undefined){const {data,error}=await this.client().rpc('inventory_setup_features');if(error&&error.code!=='PGRST202'&&error.code!=='42883')throw error;this.setupFeatures=!error&&data===1;}
   const [items,areas,locations,categories]=await Promise.all(['inventory_items','areas','locations','categories'].map(t=>this.rows(t)));
-  const db:Database={version:1,items:items.map(itemFromRow),areas:areas.map(areaFromRow),locations:locations.map(locationFromRow),categories:[...new Set([...categories.map(r=>String(r.name)),...items.map(r=>String(r.category))])]};
+  const db:Database={setupAvailable:this.setupFeatures,version:1,items:items.map(itemFromRow),areas:areas.map(areaFromRow),locations:locations.map(locationFromRow),categories:[...new Set([...categories.map(r=>String(r.name)),...items.map(r=>String(r.category))])]};
   if(this.features){const [balances,trips,manifest,movements,media]=await Promise.all(['inventory_balances','trips','trip_manifest_items','inventory_movements','inventory_media'].map(t=>this.rows(t)));db.logistics={balances:balances.map(balanceFromRow),trips:trips.map(tripFromRow),manifest:manifest.map(manifestFromRow),movements:movements.map(movementFromRow),media:media.map(mediaFromRow)};const totals=new Map<string,number>();for(const b of db.logistics.balances)totals.set(b.itemId,(totals.get(b.itemId)||0)+b.quantity);db.items=db.items.map(i=>({...i,quantity:totals.get(i.id)||0}));}
+  if(db.logistics){if(this.toolCheckouts===undefined){const {data,error}=await this.client().rpc('tool_checkout_features');if(error&&error.code!=='PGRST202'&&error.code!=='42883')throw error;this.toolCheckouts=!error&&data===true;}if(this.toolCheckouts)db.logistics.toolLoans=(await this.rows('tool_loans')).map(toolLoanFromRow);}
   return db;
  }
+ async setupItem(item:Item,policy:RestockPolicy,minimum:number,target:number){const error=validateRestock(policy,minimum,target);if(error)throw new Error(error);const {error:failure}=await this.client().rpc('setup_inventory_item',{p_id:item.id,p_expected_updated_at:item.updatedAt,p_policy:policy,p_minimum:minimum,p_target:target});if(failure)throw failure;}
  async apply(before:Database,next:Database){
   const areas=next.areas.filter(a=>changed(before.areas.find(x=>x.id===a.id),a)).map(a=>({record:{id:a.id,slug:a.slug||slug(a.name),name:a.name,lead_name:a.lead}}));
   const pending=next.locations.filter(l=>changed(before.locations.find(x=>x.id===l.id),l));const ordered:typeof pending=[];const seen=new Set(before.locations.map(l=>l.id));
@@ -86,7 +102,7 @@ export class SupabaseInventoryRepository implements InventoryRepository {
  subscribe(onChange:()=>void,onStatus:(message:string)=>void){
   let timer:ReturnType<typeof setTimeout>|undefined;const notify=()=>{clearTimeout(timer);timer=setTimeout(onChange,150);};
   const channel=this.client().channel(`inventory-${createId()}`);
-  for(const table of ['inventory_items','locations','inventory_events','profiles','areas',...(this.features?['inventory_balances','inventory_movements','trip_manifest_items','trips','inventory_media']:[])])channel.on('postgres_changes',{event:'*',schema:'public',table},notify);
+  for(const table of ['inventory_items','locations','inventory_events','profiles','areas',...(this.features?['inventory_balances','inventory_movements','trip_manifest_items','trips','inventory_media',...(this.toolCheckouts?['tool_loans']:[])]:[])])channel.on('postgres_changes',{event:'*',schema:'public',table},notify);
   channel.subscribe(status=>{onStatus(status==='SUBSCRIBED'?'':'Live updates are reconnecting. Data also refreshes every 30 seconds.');if(status==='SUBSCRIBED')notify();});
   const fallback=setInterval(onChange,30000);const focus=()=>onChange();window.addEventListener('focus',focus);
   return ()=>{clearTimeout(timer);clearInterval(fallback);window.removeEventListener('focus',focus);void this.client().removeChannel(channel);};

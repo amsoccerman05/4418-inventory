@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 import { createId } from '../src/utils/id';
 
 test('application IDs prefer native UUID and fall back to valid unique UUIDs',()=>{

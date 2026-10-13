@@ -8,6 +8,22 @@ The app now supports private item/location photos, multi-location balances, atom
 
 **Owner action:** apply only migrations **004** and **005**, in order, using [the upgrade guide](supabase/UPGRADE_LOGISTICS.md). The current V1 backend remains usable until setup is complete. No DNS, custom-domain or authentication changes are needed. The guide defines canonical quantities, permissions, Storage setup and live acceptance checks.
 
+## Guided setup and counting
+
+The **Setup** queue shows missing/stale counts, an explicit restock decision, missing home locations, and missing units. Count each physical location separately, enter the observed quantity, and confirm that you physically counted it before **Save verified count**. Saving a restock choice never changes quantities or verification.
+
+Choose **Restock when low** with a target above the minimum, or explicitly **Don't restock this item**. Legacy zero thresholds stay unconfigured; existing quantities are never assumed wrong. The latter choice removes the item from Restock but keeps counts and missing-tool warnings. Existing area-lead metadata permissions and student counting permissions are unchanged.
+
+Apply `supabase/migrations/20261013234406_inventory_setup.sql` after existing migrations 001–005, then deploy this frontend. See the [setup migration contract](docs/setup-backend.md). This additive migration leaves every prior quantity, timestamp, verification and history value intact; it adds only explicit restock policy and setup support. Existing browser data is kept when the app loads.
+
+## Quality-of-life release
+
+This release includes guided setup/counting, restock requests linked to Finance and receiving, reusable packing lists, tool checkout/return, and the associated reliability and permissions fixes. Open locations from the Locations screen, item details, or an existing location link. Hardware scanning and label printing are outside this release.
+
+- [Restock → Finance → receiving](docs/PURCHASING.md)
+- [Reusable packing templates](docs/PACKING_TEMPLATES.md)
+- [Tool checkout and return](docs/TOOL_CHECKOUTS.md)
+
 ## Supabase setup
 
 1. Create a Supabase project. In its SQL editor, run these files **once, in order**, using the project owner connection:
@@ -116,6 +132,12 @@ npx playwright install chromium
 npm run test:e2e
 npm run test:shared
 npm run test:logistics
+npm run test:models
+npm run test:purchasing
+npm run test:packing
+npm run test:packing-shared
+npm run test:checkouts
+npm run test:checkouts-shared
 ```
 
 No separate linter is configured. Build runs strict TypeScript checks. Browser tests can use an installed Chromium browser through `PLAYWRIGHT_CHROMIUM_EXECUTABLE`. `TEST_PRODUCTION=1 npm run test:e2e` tests the production demo build, including custom-domain root asset loading. The default browser suite explicitly uses demo mode regardless of local project settings.
@@ -124,10 +146,10 @@ No separate linter is configured. Build runs strict TypeScript checks. Browser t
 
 After owner setup, invite a student, Fabrication lead and mentor and repeat the main acceptance scenario on two devices: start the 5/32 Allen wrench at current 4 / expected 4 / target 6, subtract once as the student, verify current 3 and Missing tools in TA-01 on the second device, and inspect the student's name and timestamp in recent activity. Check a readonly account cannot change counts, and use a password-reset email to verify the deployed redirect URL.
 
-## V1 limitations
+## Current limitations
 
-- No QR codes, serialized asset tracking, tool checkout, full purchasing workflow, Onshape integration, invitation backend or advanced analytics.
-- Order status remains a saved field/filter, not a purchasing workflow.
+- No serialized asset tracking, Onshape integration, invitation backend or advanced analytics.
+- The legacy order-status field remains available for review; current restocking uses the request, Finance and receiving workflow above.
 - History shows a concise recent subset, with no analytics or audit export UI.
 - User invitations and initial privileged profile setup require the Supabase dashboard/owner SQL.
 - Local demo data remains browser/origin-specific and does not synchronize across tabs/devices; its bounded local history is not an authoritative audit log. Export backups before clearing storage.
