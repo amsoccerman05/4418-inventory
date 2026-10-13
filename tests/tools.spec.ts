@@ -120,14 +120,18 @@ test('mobile audit and local official branding render correctly',async({page})=>
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
  await page.getByRole('button',{name:'Add one 5/32" Allen wrench',exact:true}).click();
  await expect(page.locator('.quantity-toast')).toContainText('4 each');
- await page.screenshot({path:'test-results/drawer-mobile.png',fullPage:true});
+ await expect.poll(()=>page.locator('.sidebar').evaluate(element=>element.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+ await page.screenshot({path:'test-results/drawer-mobile.png',fullPage:true,animations:'disabled'});
  await page.getByRole('button',{name:'Toggle navigation'}).click();
  const logo=page.locator('.suite-brand img');
  await expect(logo).toBeVisible();
  expect(await logo.evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  expect(await logo.getAttribute('src')).toContain('branding/4418-impulse-emblem.png');
  await page.getByRole('button',{name:'Dashboard',exact:true}).click();
- await expect(page.getByAltText('IMPULSE — FRC Team 4418')).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Everything in its place.',exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Team Hub / Home',exact:true})).toBeVisible();await expect(logo).toBeVisible();
+ await expect(page.getByRole('button',{name:'Toggle navigation',exact:true})).toBeVisible();
+ await expect.poll(()=>page.locator('.sidebar').evaluate(element=>element.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
 });
 
 test('drawer save failure leaves verification dates unchanged',async({page})=>{

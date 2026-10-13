@@ -8,6 +8,18 @@ The app now supports private item/location photos, multi-location balances, atom
 
 **Owner action:** apply only migrations **004** and **005**, in order, using [the upgrade guide](supabase/UPGRADE_LOGISTICS.md). The current V1 backend remains usable until setup is complete. No DNS, custom-domain or authentication changes are needed. The guide defines canonical quantities, permissions, Storage setup and live acceptance checks.
 
+## Guided setup and location labels
+
+The **Setup** queue shows missing/stale counts, an explicit restock decision, missing home locations, and missing units. Count each physical location separately, enter the observed quantity, and confirm that you physically counted it before **Save verified count**. Saving a restock choice never changes quantities or verification.
+
+Choose **Restock when low** with a target above the minimum, or explicitly **Don't restock this item**. Legacy zero thresholds stay unconfigured; existing quantities are never assumed wrong. The latter choice removes the item from Restock but keeps counts and missing-tool warnings. Existing area-lead metadata permissions and student counting permissions are unchanged.
+
+On **Locations → Print labels**, select drawers/bins (or other permanent locations) and print at **100% / actual size** on white paper. The two-column sheet uses 92 mm-wide labels with uncluttered black/white QR and Code 128 symbols. QR opens the location on a phone; the CipherLab 1500P reads the **Code 128** half. Focus **Scan location label**, scan, then press Enter if the scanner has no Enter suffix. Scanning only opens a location. Unknown, ambiguous, archived and foreign-workspace codes are rejected without mutations. Labels contain identifiers and a public app URL, never credentials; reading stock still requires the existing team sign-in.
+
+Apply `supabase/migrations/20261012232840_inventory_setup_location_labels.sql` after existing migrations 001–005, then deploy this frontend. See [setup/label migration contract](docs/setup-label-backend.md). This additive migration leaves every prior quantity, timestamp, verification and history value intact; it adds only policy defaults and immutable generated location-label codes. Roll back the frontend rather than deleting generated identities after labels have been printed.
+
+Physical CipherLab hardware and printer output have **not** been tested. The automated suite validates navigation, QR/Code 128 image decoding, printable layout, role permissions, stale edits and existing workflows. First print one label and verify the actual scanner cable/interface and Enter suffix before printing the full set.
+
 ## Supabase setup
 
 1. Create a Supabase project. In its SQL editor, run these files **once, in order**, using the project owner connection:
@@ -126,7 +138,8 @@ After owner setup, invite a student, Fabrication lead and mentor and repeat the 
 
 ## V1 limitations
 
-- No QR codes, serialized asset tracking, tool checkout, full purchasing workflow, Onshape integration, invitation backend or advanced analytics.
+- No serialized asset tracking, tool checkout, full purchasing workflow, Onshape integration, invitation backend or advanced analytics.
+- Location QR and Code 128 labels are supported; physical scanner hardware still needs a local smoke test.
 - Order status remains a saved field/filter, not a purchasing workflow.
 - History shows a concise recent subset, with no analytics or audit export UI.
 - User invitations and initial privileged profile setup require the Supabase dashboard/owner SQL.
