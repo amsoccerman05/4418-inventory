@@ -1,6 +1,6 @@
 import {PNG} from 'pngjs';
 import {MultiFormatReader, BarcodeFormat, DecodeHintType, BinaryBitmap, HybridBinarizer, RGBLuminanceSource} from '@zxing/library';
-import {test, expect, type Page} from '@playwright/test';
+import {test, expect, type Page} from './browser-fixtures';
 import {demo} from '../src/data';
 function decodeLabel(bytes:Buffer,format:BarcodeFormat){const png=PNG.sync.read(bytes),gray=new Uint8ClampedArray(png.width*png.height);for(let i=0;i<gray.length;i++)gray[i]=(png.data[i*4]+2*png.data[i*4+1]+png.data[i*4+2])/4;return new MultiFormatReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(gray,png.width,png.height))),new Map([[DecodeHintType.POSSIBLE_FORMATS,[format]]])).getText();}
 const key = 'frc-4418-inventory-v1';

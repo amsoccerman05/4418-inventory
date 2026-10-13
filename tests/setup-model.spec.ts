@@ -1,4 +1,4 @@
-import {test, expect} from '@playwright/test';
+import {test, expect} from './browser-fixtures';
 import {demo, filterRestock, exportCsv, importCsv} from '../src/data';
 import {countableSetupLocation, locationScanUrl, resolveLocationScan, setupReasons, validateRestock} from '../src/services/setup-model';
 test('setup never infers no-restock from zeros, and explicit choices survive CSV', () => {

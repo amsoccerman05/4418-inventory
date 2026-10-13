@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 import { demo, migrateItem, missingTools, status, filterRestock, locationPath, verifyDrawer, exportCsv, importCsv, addToolDemo } from '../src/data';
 const key='frc-4418-inventory-v1';
 test.beforeEach(async ({page})=>{

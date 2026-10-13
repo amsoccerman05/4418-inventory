@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../browser-fixtures';
 import {demo,missingTools} from '../../src/data';
 import {atLocation} from '../../src/services/logistics-model';
 import {enableLogistics,localAction,syncLocalBalances} from '../../src/services/logistics-local';

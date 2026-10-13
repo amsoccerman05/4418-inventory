@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './browser-fixtures';
 import { demo, exportCsv, importCsv, filterRestock } from '../src/data';
 
 const key = 'frc-4418-inventory-v1';

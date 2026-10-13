@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../browser-fixtures';
 const path='/tests/purchasing-ui/harness.html';
 test('configure → request → draft → two approvals → partial receiving survives reload',async({page})=>{
  await page.goto(path);await page.getByLabel('Find restock item').fill('NEO Vortex');
@@ -29,7 +29,7 @@ test('configure → request → draft → two approvals → partial receiving su
  await page.getByRole('dialog').getByRole('button',{name:'Back',exact:true}).click();
 });
 test('closing setup leaves no request or stock change, mobile has no page overflow',async({page})=>{
- await page.setViewportSize({width:390,height:844});await page.goto(path);await page.getByLabel('Find restock item').fill('NEO Vortex');await page.getByRole('button',{name:'Purchasing setup for NEO Vortex'}).click();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeHidden();
+ await page.setViewportSize({width:390,height:844});await page.goto(path);await page.getByLabel('Find restock item').fill('NEO Vortex');await expect(page.locator('.purchasing-scroll-hint')).toBeVisible();const table=page.getByRole('region',{name:'Restock quantities and actions'});await table.focus();await page.keyboard.press('ArrowRight');await expect.poll(()=>table.evaluate(element=>element.scrollLeft)).toBeGreaterThan(0);await page.getByRole('button',{name:'Purchasing setup for NEO Vortex'}).click();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeHidden();
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('frc-4418-inventory-v1')!).purchasing)).toBeUndefined();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.locator('.purchasing-panel .table-wrap').evaluate(element=>{element.scrollLeft=0;});

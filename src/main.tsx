@@ -53,7 +53,7 @@ function App({initialData,profile,signOut,updateProfile}:{initialData:Database;p
  const [restockArea,setRestockArea]=useState(profile.role==='lead'?profile.primaryAreaId||'':''),[restockState,setRestockState]=useState<OrderState|''>('');
  const [route,setRoute]=useState(location.hash.slice(1)||'dashboard');
  React.useEffect(()=>{const change=()=>setRoute(location.hash.slice(1)||'dashboard');window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
- const go=(path:string)=>{if(path.startsWith('location/')){setSearch('');setArea('');setCategory('');setLoc('');setStock('');setItemType('');setOwnership('');}location.hash=path;setMobile(false);};
+ const go=(path:string)=>{if(path.startsWith('location/')){setSearch('');setArea('');setCategory('');setLoc('');setStock('');setItemType('');setOwnership('');}location.hash=path;setRoute(path||'dashboard');setMobile(false);};
  const [mobile,setMobile]=useState(false),[search,setSearch]=useState(''),[area,setArea]=useState(profile.role==='lead'?profile.primaryAreaId||'':''),[category,setCategory]=useState(''),[loc,setLoc]=useState(''),[stock,setStock]=useState('');
  const [itemType,setItemType]=useState(''),[ownership,setOwnership]=useState('');
  const [moving,setMoving]=useState<Item|null>(null);

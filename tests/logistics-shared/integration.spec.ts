@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from '../browser-fixtures';
 async function login(page:Page,role='mentor'){const response=await page.request.post('http://127.0.0.1:54329/auth/v1/token?grant_type=password',{data:{email:role+'@example.test',password:'test-password'}});const session=await response.json();await page.addInitScript(session=>localStorage.setItem('sb-127-auth-token',JSON.stringify(session)),session);await page.goto('/');if(role!=='inactive')await expect(page.getByRole('button',{name:'Inventory',exact:true})).toBeVisible();}
 test('shared project movement updates balances and home audit via SQL RPC',async({page})=>{
  await login(page);await page.goto('/#locations');await page.getByRole('button',{name:'Add location',exact:true}).click();await page.getByLabel('Location name',{exact:true}).fill('Drivebase Prototype');await page.getByRole('button',{name:'Create location',exact:true}).click();await expect(page.getByRole('button',{name:/Drivebase Prototype/})).toBeVisible();

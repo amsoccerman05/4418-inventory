@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './browser-fixtures';
 import {demo,blankItem,type Database} from '../src/data';
 import {localAction} from '../src/services/logistics-local';
 import {localPurchasingAction,localPurchasingContext,type PurchasingDatabase} from '../src/services/purchasing-local';

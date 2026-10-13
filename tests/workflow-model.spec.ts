@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './browser-fixtures';
 import {blankItem,type Database} from '../src/data';
 import {enableLogistics,localAction} from '../src/services/logistics-local';
 import {packingLocalAction} from '../src/services/packing-local';

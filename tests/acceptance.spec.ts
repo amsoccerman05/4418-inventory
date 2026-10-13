@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './browser-fixtures';
 import { demo, type Database } from '../src/data';
 const key='frc-4418-inventory-v1';
 const name='5/32" Allen wrench';

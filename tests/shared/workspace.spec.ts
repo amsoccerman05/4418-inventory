@@ -1,4 +1,4 @@
-import { test,expect,type Page } from '@playwright/test';
+import { test,expect,type Page } from '../browser-fixtures';
 // Exercise the SDK and shared repository with the HTTP-limited Crypto API.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>Object.defineProperty(crypto,'randomUUID',{value:undefined,configurable:true}));});
 const drawer='10000000-0000-4000-8000-000000000001';
@@ -9,9 +9,9 @@ test('canonical gateway, restoration, protected routes and logout',async({page})
  await page.route('https://team.frc4418.org/',r=>r.fulfill({contentType:'text/html',body:'<h1>Team sign in</h1>'}));await page.goto('/#inventory');await expect(page).toHaveURL('https://team.frc4418.org/');await signIn(page,'student');await page.goto('/#inventory');await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();await page.reload();await expect(page.getByRole('heading',{name:'Inventory',exact:true})).toBeVisible();await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page).toHaveURL('https://team.frc4418.org/');
 });
 
-test('student phone change is attributed and reaches a second device via realtime',async({page,browser})=>{
+test('student phone change is attributed and reaches a second device via realtime',async({page,newIsolatedContext})=>{
  await page.setViewportSize({width:390,height:844});
- const context=await browser.newContext();const mentor=await context.newPage();
+ const context=await newIsolatedContext();const mentor=await context.newPage();
  try{
   await signIn(mentor,'mentor');await mentor.goto(`/#location/${drawer}`);
   await signIn(page,'student');await page.getByRole('button',{name:'Toggle navigation'}).click();await page.getByRole('button',{name:'Inventory',exact:true}).click();

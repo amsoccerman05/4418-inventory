@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../browser-fixtures';
 import {demo} from '../../src/data';
 import {localPurchasingAction} from '../../src/services/purchasing-local';
 const storageKey='frc-4418-inventory-v1';

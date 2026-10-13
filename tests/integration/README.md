@@ -59,3 +59,11 @@ Artifacts:
 All applicable jobs must pass for complete verification. Embedded PGlite SQL tests run serially to avoid memory contention. Embedded PostgreSQL and mocked browser checks remain complementary evidence; neither replaces real Auth/PostgREST, real concurrent-session execution or visual review of generated screenshots. Syntax, preparation and guard checks alone are never reported as runtime integration passes.
 
 `npm run test:models` runs the purchasing, packing, checkout and combined state-transition regressions without starting a browser or web server. The combined checks cover loan-aware packing availability, missing/partial-return custody, restock into a loan location, stale review rejection, approval retries and independent borrower/trip returns. They also run in the database-checks job so browser installation cannot suppress them.
+
+## Browser network isolation
+
+All Playwright specs import `tests/browser-fixtures.ts`. Its automatic teardown fails a test after any unexpected outbound attempt, even if the app or test catches the request error. Default and extra-device contexts block service workers and allow network access only to literal `127.0.0.1` or `[::1]`; API helpers and WebSockets are guarded too. HTTP clients never follow redirects automatically, and redirect responses are rejected before the browser can follow them. Local fixtures currently need no HTTP redirects.
+
+Explicit page-level mock responses, such as the synthetic Team Hub sign-in page, still work. The app's exact Google Fonts stylesheet is fulfilled with empty CSS so browser review uses local font fallbacks. Additional browser contexts must use `newIsolatedContext`; test routes that resume a request must use `route.fallback()` so the guard still runs.
+
+`tests/browser-isolation.spec.ts` covers mocked gateway navigation, direct outbound attempts, second-device contexts, API helpers and HTTP redirect escapes. Its negative cases mark an expected failure only after checking the guard recorded the correct violation; the actual expected failure comes from automatic fixture teardown. Missing teardown enforcement therefore fails CI as an unexpected pass. Reserved `.invalid` destinations keep negative regressions synthetic even if a future guard breaks.

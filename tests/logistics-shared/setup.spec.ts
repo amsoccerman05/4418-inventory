@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from '../browser-fixtures';
 async function login(page:Page,role='mentor',route='/#setup'){
  const response=await page.request.post('http://127.0.0.1:54329/auth/v1/token?grant_type=password',{data:{email:role+'@example.test',password:'test-password'}}),session=await response.json();
  await page.addInitScript(session=>localStorage.setItem('sb-127-auth-token',JSON.stringify(session)),session);await page.goto(route);await expect(page.getByRole('button',{name:'Inventory',exact:true})).toBeVisible();return session;

@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../browser-fixtures';
 import {blankItem,type Database} from '../../src/data';
 import {enableLogistics,localAction} from '../../src/services/logistics-local';
 import {packingLocalAction} from '../../src/services/packing-local';
@@ -36,7 +36,7 @@ test('save, review, cancel, availability, approve and physical packing stay sepa
  await page.getByRole('button',{name:'Review planned kit',exact:true}).click();await page.getByLabel('Packing destination 1',{exact:true}).selectOption({label:'Next regional → Trailer'});
  await page.getByLabel('Planned quantity 1',{exact:true}).fill('99');await expect(page.locator('.packing-warning')).toContainText('Not enough');await expect(page.getByRole('button',{name:'Approve reviewed kit',exact:true})).toBeDisabled();
  await page.getByLabel('Planned quantity 1',{exact:true}).fill('2');await page.getByRole('checkbox',{name:/I reviewed/}).check();
- expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);await page.screenshot({path:'test-results/packing-review-mobile.png',fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:'test-results/packing-review-mobile.png',fullPage:true});await page.locator('.packing-review').scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/packing-review-viewport.png',fullPage:false});
  await page.getByRole('button',{name:'Approve reviewed kit',exact:true}).dblclick();await expect(page.locator('.manifest-row')).toHaveCount(1);await expect(page.locator('.manifest-row')).toContainText('Approved');await expect(page.getByRole('button',{name:'Pack',exact:true})).toHaveCount(0);
  const state=await page.evaluate(()=>JSON.parse(localStorage.getItem('frc-4418-inventory-v1')!));expect(state.logistics.balances.filter((b:any)=>b.quantity>0)).toHaveLength(1);expect(state.logistics.manifest.filter((m:any)=>m.tripId===next)).toHaveLength(1);
  await page.getByLabel('Trip status').selectOption('packing');await page.getByRole('button',{name:'Pack',exact:true}).click();await page.getByRole('button',{name:'Confirm pack',exact:true}).click();await expect(page.locator('.manifest-row')).toContainText('Packed');
@@ -44,5 +44,5 @@ test('save, review, cancel, availability, approve and physical packing stay sepa
 test('copy a closed trip opens review only and Back/Forward do not submit it',async({page})=>{
  const {db,prior,next}=seed();await page.addInitScript(db=>localStorage.setItem('frc-4418-inventory-v1',JSON.stringify(db)),db);await page.goto('/#trip/'+next);
  await page.getByLabel('Packing source',{exact:true}).selectOption('trip:'+prior);await page.getByRole('button',{name:'Review planned kit',exact:true}).click();await expect(page.locator('.manifest-row')).toHaveCount(0);
- await page.getByRole('button',{name:'All trips',exact:true}).click();await page.goBack();await expect(page.locator('.packing-review')).toHaveCount(0);await expect(page.locator('.manifest-row')).toHaveCount(0);
+ await page.getByRole('button',{name:'All trips',exact:true}).click();await expect(page).toHaveURL(/#travel$/);await expect(page.getByRole('button',{name:/Next regional.*Open trip/})).toBeVisible();await page.goBack();await expect(page).toHaveURL(new RegExp('#trip/'+next+'$'));await expect(page.locator('.packing-review')).toHaveCount(0);await expect(page.locator('.manifest-row')).toHaveCount(0);await page.goForward();await expect(page).toHaveURL(/#travel$/);await page.goBack();await expect(page).toHaveURL(new RegExp('#trip/'+next+'$'));await expect(page.locator('.packing-review')).toHaveCount(0);await expect(page.locator('.manifest-row')).toHaveCount(0);
 });

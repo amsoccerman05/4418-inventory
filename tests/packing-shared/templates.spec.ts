@@ -1,4 +1,4 @@
-import {test,expect,type APIRequestContext} from '@playwright/test';
+import {test,expect,type APIRequestContext} from '../browser-fixtures';
 import {randomUUID} from 'node:crypto';
 const api='http://127.0.0.1:54404';
 const home='10000000-0000-4000-8000-000000000001',itemId='20000000-0000-4000-8000-000000000001';
