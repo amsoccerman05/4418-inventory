@@ -21,7 +21,7 @@ export function setupReasons(db: Database, item: Item): string[] {
   const reasons: string[] = [];
   if (countLocations(db, item).filter(i=>countableSetupLocation(db,i)).some(needsVerification)) reasons.push('Count and verify');
   if (restockPolicy(item) === 'unset') reasons.push('Choose restock policy');
-  if (!item.locationId || item.locationId===unassignedLocationId || !db.locations.some(l => l.id === item.locationId && l.active !== false)) reasons.push('Choose home location');
+  if (!countableSetupLocation(db,item)) reasons.push('Choose home location');
   if (!item.unit.trim()) reasons.push('Set counting unit');
   return reasons;
 }

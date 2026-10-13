@@ -26,5 +26,6 @@ test('unassigned and travel balances cannot be falsely marked ready or counted t
  const unassigned={...item,locationId:placeholder,lastVerified:new Date().toISOString(),restockPolicy:'do_not_restock' as const};
  expect(setupReasons(db,unassigned)).toContain('Choose home location');expect(countableSetupLocation(db,unassigned)).toBe(false);
  db.locations.push({id:'travel-test',name:'Pit',room:'',storage:'',bin:'',tripId:'trip-test'});
- expect(countableSetupLocation(db,{...item,locationId:'travel-test'})).toBe(false);
+ const travelHome={...item,locationId:'travel-test',lastVerified:new Date().toISOString(),restockPolicy:'do_not_restock' as const};
+ expect(countableSetupLocation(db,travelHome)).toBe(false);expect(setupReasons(db,travelHome)).toContain('Choose home location');
 });
