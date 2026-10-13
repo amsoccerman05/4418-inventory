@@ -50,7 +50,12 @@ let server: Server;
 let redirectURL: string;
 let sockets: WebSocketServer;
 test.beforeAll(async () => {
-  server = createServer((_request, response) => { response.writeHead(302, { Location: remote }); response.end(); });
+  server = createServer((request, response) => {
+    if (request.url === '/document') {
+      response.writeHead(200, { 'Content-Type': 'text/html' });
+      response.end('<!doctype html><title>Synthetic local document</title><link rel="icon" href="data:,"><h1>Loopback fixture</h1>');
+    } else { response.writeHead(302, { Location: remote }); response.end(); }
+  });
   sockets = new WebSocketServer({ server });
   sockets.on('connection', socket => socket.on('message', (data, isBinary) => socket.send(data, { binary: isBinary })));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -65,6 +70,7 @@ test.afterAll(async () => {
 });
 
 test('local HTTP redirect cannot escape to production', async ({ page, networkIsolation }) => {
+  await page.goto(new URL('/document', redirectURL).href);
   await page.goto(redirectURL).catch(() => {});
   expect(networkIsolation.violations).toHaveLength(1);
   expect(networkIsolation.violations[0]).toContain('blocked browser redirect');
@@ -79,7 +85,10 @@ test('API helper disables automatic redirects before inspecting the response', a
 });
 
 
-test('loopback realtime keeps native subprotocols and ordered text/binary frames', async ({ page }) => {
+for (const document of ['about:blank', 'fulfilled local document']) test(`loopback realtime keeps native subprotocols and ordered text/binary frames from ${document}`, async ({ page }) => {
+  if (document !== 'about:blank') await page.goto(new URL('/document', redirectURL).href);
+  const errors: string[] = [];
+  page.on('websocket', socket => socket.on('socketerror', error => errors.push(error)));
   const result = await page.evaluate(url => new Promise<{ protocol: string; frames: unknown[] }>((resolve, reject) => {
     const socket = new WebSocket(url, ['phoenix', 'synthetic-test']);
     socket.binaryType = 'arraybuffer';
@@ -90,11 +99,12 @@ test('loopback realtime keeps native subprotocols and ordered text/binary frames
       frames.push(typeof event.data === 'string' ? event.data : Array.from(new Uint8Array(event.data)));
       if (frames.length === 2) { const protocol = socket.protocol; socket.close(); resolve({ protocol, frames }); }
     };
-  }), redirectURL.replace('http:', 'ws:'));
+  }), redirectURL.replace('http:', 'ws:')).catch(error => { throw Error(`${error.message}; socket errors: ${JSON.stringify(errors)}`); });
   expect(result).toEqual({ protocol: 'phoenix', frames: ['synthetic-first', [4, 4, 1, 8]] });
 });
 
 test('unmocked remote WebSocket fails even when its close event is handled', async ({ page, networkIsolation }) => {
+  await page.goto(new URL('/document', redirectURL).href);
   await page.evaluate(() => new Promise<void>(resolve => {
     const socket = new WebSocket('wss://production.invalid/socket');
     socket.onerror = () => resolve();
@@ -125,7 +135,7 @@ test('guarded context drains response cleanup before closing and keeps routing i
   } as unknown as BrowserContext;
   await new NetworkIsolation().protectContext(context);
   const work = handler({
-    request: () => ({ url: () => 'http://127.0.0.1:54329/local' }),
+    request: () => ({ url: () => 'http://127.0.0.1:54329/local', isNavigationRequest: () => false }),
     fetch: () => fetched,
     fulfill: async () => { order.push('fulfilled'); },
   } as unknown as Route);
@@ -135,4 +145,36 @@ test('guarded context drains response cleanup before closing and keeps routing i
   releaseDispose();
   await Promise.all([work, closing]);
   expect(order).toEqual(['fulfilled', 'disposing', 'disposed', 'context closed']);
+});
+
+test('local-network permission is origin-scoped and only granted to validated local documents', async () => {
+  let handler!: (route: Route) => Promise<void>;
+  const grants: unknown[] = [];
+  const context = {
+    request: { fetch: async () => { throw Error('Unused API helper'); } },
+    route: async (_pattern: string, callback: typeof handler) => { handler = callback; },
+    routeWebSocket: async () => {},
+    grantPermissions: async (permissions: string[], options: unknown) => { grants.push({ permissions, options }); },
+    close: async () => {},
+  } as unknown as BrowserContext;
+  const isolation = new NetworkIsolation();
+  await isolation.protectContext(context);
+  const route = (url: string, navigation: boolean) => ({
+    request: () => ({ url: () => url, isNavigationRequest: () => navigation }),
+    fetch: async () => ({ status: () => 200, dispose: async () => {} }),
+    fulfill: async () => {},
+    abort: async () => {},
+  } as unknown as Route);
+  await handler(route('http://127.0.0.1:5176/script.js', false));
+  await handler(route(remote, true));
+  expect(grants).toEqual([]);
+  await handler(route('http://127.0.0.1:5176/', true));
+  await handler(route('http://127.0.0.1:5176/again', true));
+  await handler(route('http://[::1]:5177/', true));
+  expect(grants).toEqual([
+    { permissions: ['local-network-access'], options: { origin: 'http://127.0.0.1:5176' } },
+    { permissions: ['local-network-access'], options: { origin: 'http://[::1]:5177' } },
+  ]);
+  expect(isolation.violations).toHaveLength(1);
+  await context.close();
 });

@@ -64,6 +64,7 @@ export class NetworkIsolation {
   async protectContext(context: BrowserContext, baseURL?: string) {
     this.protectRequest(context.request, baseURL);
     const inFlight = new Set<Promise<void>>();
+    const localDocumentPermissions = new Map<string, Promise<void>>();
     let shuttingDown = false;
     const handleRoute = async (route: Route) => {
       const value = route.request().url();
@@ -90,7 +91,23 @@ export class NetworkIsolation {
           const target = new URL(response.headers().location || value, value).href;
           this.deny('browser redirect', target);
           await route.abort('blockedbyclient');
-        } else await route.fulfill({ response });
+        } else {
+          if (route.request().isNavigationRequest()) {
+            // Chromium's DevTools-fulfilled document has no remote_endpoint,
+            // so its address space is unknown/public even at a loopback URL.
+            // Native loopback WebSockets then require Local Network Access.
+            // Grant only this validated local document origin, in this disposable
+            // context. HTTP/WS destination guards remain in force independently.
+            const origin = new URL(value).origin;
+            let granted = localDocumentPermissions.get(origin);
+            if (!granted) {
+              granted = context.grantPermissions(['local-network-access'], { origin });
+              localDocumentPermissions.set(origin, granted);
+            }
+            await granted;
+          }
+          await route.fulfill({ response });
+        }
       } finally { await response.dispose(); }
     };
     await context.route('**/*', route => {

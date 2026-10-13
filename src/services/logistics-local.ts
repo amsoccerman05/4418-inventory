@@ -1,14 +1,15 @@
+import {nextLocalTimestamp} from './local-version';
 import {loanQuantityAt,approvedQuantityAt,outstandingLoans} from './tool-checkouts-model';
 import {createId} from '../utils/id';
 import type {Database} from '../data';
 import {type Logistics,type InventoryAction,type ActionData,type Manifest,type TripStatus} from './logistics-model';
 export function enableLogistics(db:Database):Database {
  if(db.logistics)return db;
- const now=new Date().toISOString();const unassigned='local-unassigned';
+ const now=nextLocalTimestamp(db);const unassigned='local-unassigned';
  return {...db,locations:[...db.locations,...(db.items.some(i=>!i.locationId)?[{id:unassigned,name:'Unassigned',bin:'UNASSIGNED',kind:'Storage' as const,room:'',storage:''}]:[])],items:db.items.map(i=>({...i,locationId:i.locationId||unassigned})),logistics:{balances:db.items.map(i=>({id:createId(),itemId:i.id,locationId:i.locationId||unassigned,quantity:i.quantity,updatedAt:now,lastVerified:i.lastVerified,lastVerifiedBy:i.lastVerifiedBy})),trips:[],manifest:[],movements:[],media:[]}};
 }
 export function localAction(database:Database,action:InventoryAction|'enable',d:ActionData):Database {
- const db=structuredClone(enableLogistics(database)),g=db.logistics!;const now=new Date().toISOString();
+ const db=structuredClone(enableLogistics(database)),g=db.logistics!;const now=nextLocalTimestamp(db);
  const str=(k:string)=>String(d[k]??'');const qty=Number(d.quantity);const note=str('note');
  if(action==='enable')return db;
  if(action==='create_trip'){

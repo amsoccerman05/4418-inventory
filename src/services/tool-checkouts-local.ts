@@ -1,3 +1,4 @@
+import {nextLocalTimestamp} from './local-version';
 import type {Database} from '../data';
 import {createId} from '../utils/id';
 import {enableLogistics} from './logistics-local';
@@ -15,7 +16,7 @@ export function localToolAction(database:Database,action:ToolAction,d:ToolAction
  const item=db.items.find(i=>i.id===(action==='checkout'?d.itemId:loan?.itemId));
  if(!item)throw new Error(action==='checkout'?'Item not found':'Loan not found');
  if(item.itemType!=='Tool')throw new Error('Only Tool items can be checked out. Consumables use quantity controls.');
- const now=new Date(Math.max(Date.now(),Date.parse(item.updatedAt||'')+1||0,loan?Date.parse(loan.updatedAt)+1:0)).toISOString();
+ const now=nextLocalTimestamp(db);
  const note=(d.note??'').trim();
  const set=(locationId:string,quantity:number)=>{if(quantity<loanQuantityAt(db,item.id,locationId))throw new Error('Outstanding tool loans reserve this quantity. Return the specific loan first.');const b=g.balances.find(b=>b.itemId===item.id&&b.locationId===locationId);if(b){b.quantity=quantity;b.updatedAt=now;}else g.balances.push({id:createId(),itemId:item.id,locationId,quantity,updatedAt:now,lastVerified:''});};
  const transfer=(from:string,to:string,quantity:number,type:string)=>{const src=db.locations.find(l=>l.id===from),dst=db.locations.find(l=>l.id===to);if(!src||!dst||src.active===false||dst.active===false||src.tripId||dst.tripId||src.classification==='travel'||dst.classification==='travel'||from===to)throw new Error('Choose different active non-travel locations');const have=g.balances.find(b=>b.itemId===item.id&&b.locationId===from)?.quantity??0;if(quantity>have)throw new Error('Not enough quantity at the source');set(from,have-quantity);set(to,(g.balances.find(b=>b.itemId===item.id&&b.locationId===to)?.quantity??0)+quantity);g.movements.unshift({id:createId(),itemId:item.id,itemName:item.name,quantity,from,to,tripId:'',type,userId:actor.id,note,createdAt:now});};

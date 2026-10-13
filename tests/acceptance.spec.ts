@@ -99,7 +99,7 @@ test('a 20-line drawer stays quick to navigate, correct, and verify',async({page
 });
 
 test('CSV export and re-import preserve IDs and all relationships without duplicates',async({page})=>{
- await page.goto('/#admin');const before=await readDb(page);
+ await page.goto('/#admin');await expect(page.getByRole('button',{name:'Export CSV',exact:true})).toBeVisible();const before=await readDb(page);
  const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'Export CSV',exact:true}).click();
  const download=await downloading;const path=await download.path();expect(path).toBeTruthy();
  await page.locator('input[type=file]').setInputFiles(path!);

@@ -1,3 +1,4 @@
+import {nextLocalTimestamp} from './local-version';
 import type {Database} from '../data';
 import {createId} from '../utils/id';
 import {positive,purchasingEmpty,validSheet,openRequest,restockBlocked,stockAdd,stockPacks,remaining,requireSupportedStock,type PurchasingAction,type PurchasingContext,type PurchasingData,type RestockRequest,type RestockReceipt} from './purchasing-model';
@@ -19,7 +20,7 @@ export function localPurchasingContext(db:PurchasingDatabase,profile:UserProfile
 }
 export function localPurchasingAction(source:PurchasingDatabase,action:PurchasingAction,data:PurchasingData,profile:UserProfile=demoProfile):PurchasingDatabase{
  if(!canCount(profile))throw new Error('Inventory write access required');
- const db=structuredClone(source),p=db.purchasing??=initial(),now=new Date().toISOString(),note=String(data.note??'').trim();
+ const db=structuredClone(source),p=db.purchasing??=initial(),now=nextLocalTimestamp(db),note=String(data.note??'').trim();
  if(note.length>2000)throw new Error('Notes must be at most 2000 characters');
  const audit=(requestId?:string)=>p.history.push({action,actor:profile.id,at:now,requestId});
  if(action==='configure'){

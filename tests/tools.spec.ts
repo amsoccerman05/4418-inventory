@@ -139,7 +139,7 @@ test('mobile audit and local official branding render correctly',async({page})=>
 });
 
 test('drawer save failure leaves verification dates unchanged',async({page})=>{
- await page.goto('/#location/ta-01');const before=await readDb(page);
+ await page.goto('/#location/ta-01');await expect(page.getByRole('button',{name:'Mark drawer verified'})).toBeVisible();const before=await readDb(page);expect(before.locations.every((location:{labelCode?:string})=>!!location.labelCode)).toBe(true);
  await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new Error('Storage full');};});
  await page.getByRole('button',{name:'Mark drawer verified'}).click();
  await expect(page.getByRole('alert')).toContainText('Storage full');

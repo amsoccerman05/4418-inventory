@@ -13,17 +13,19 @@ test('student phone change is attributed and reaches a second device via realtim
  await page.setViewportSize({width:390,height:844});
  const context=await newIsolatedContext();const mentor=await context.newPage();
  const realtime:unknown[]=[];
+ const redact=(message:string)=>message.replace(/(?:https?|wss?):\/\/[^\s\"'<>]+/g,value=>{try{const url=new URL(value);return url.origin+url.pathname;}catch{return '[redacted URL]';}}).replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,'[redacted]');
  for(const [actor,device]of [['student',page],['mentor',mentor]] as const){
   device.on('websocket',socket=>{
    const url=new URL(socket.url());const target=url.origin+url.pathname;
-   realtime.push({actor,event:'socket',target});socket.on('close',()=>realtime.push({actor,event:'close',target}));socket.on('socketerror',()=>realtime.push({actor,event:'socketerror',target}));
+   realtime.push({actor,event:'socket',target});socket.on('close',()=>realtime.push({actor,event:'close',target}));socket.on('socketerror',message=>realtime.push({actor,event:'socketerror',target,message:redact(message)}));
    const recordFrame=(direction:string)=>(frame:{payload:string|Buffer})=>{try{
     const [joinRef,ref,topic,event,payload]=JSON.parse(String(frame.payload));
     realtime.push({actor,direction,joinRef,ref,topic,event,status:payload?.status,ids:payload?.ids,tables:payload?.config?.postgres_changes?.map((c:{table?:string})=>c.table)});
    }catch{realtime.push({actor,direction,event:'non-JSON frame'});}};
    socket.on('framesent',recordFrame('framesent'));socket.on('framereceived',recordFrame('framereceived'));
   });
-  device.on('pageerror',error=>realtime.push({actor,event:'pageerror',message:error.message.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,'[redacted]')}));
+  device.on('pageerror',error=>realtime.push({actor,event:'pageerror',message:redact(error.message)}));
+  device.on('console',message=>{if(message.type()==='error')realtime.push({actor,event:'console-error',message:redact(message.text())});});
  }
  try{
   await signIn(mentor,'mentor');await mentor.goto(`/#location/${drawer}`);

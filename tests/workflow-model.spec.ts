@@ -38,6 +38,7 @@ test('combined packing availability reserves active and missing loans and never 
 });
 
 test('combined restock creates only unclaimed stock and template approval, borrower return and receipt retry stay independent',()=>{
+ const actualNow=Date.now;Date.now=()=>Date.UTC(2026,0,1);try{
  const f=fixture();let db:PurchasingDatabase=f.db;
  const initialLoan=structuredClone(db.logistics!.toolLoans![0]),stale=f.review(db);
  const purchase=(action:Parameters<typeof localPurchasingAction>[1],data:Parameters<typeof localPurchasingAction>[2])=>{db=localPurchasingAction(db,action,data);};
@@ -68,4 +69,5 @@ test('combined restock creates only unclaimed stock and template approval, borro
  expect(localPurchasingContext(db).requests[0].state).toBe('received');
  expect(db.logistics!.toolLoans![0].returnedQuantity).toBe(2);
  expect(db.logistics!.manifest.find(m=>m.id===approved.result.manifestIds![0])!.ownership).toBe('Shared / School');
+ }finally{Date.now=actualNow;}
 });
