@@ -120,6 +120,7 @@ test('existing verifiedAt data and CSV migrate without losing verification', asy
 
 test('failed saves leave quantities unchanged and never offer Undo', async ({ page }) => {
   await page.goto('/#inventory');
+  await expect(page.getByRole('button', { name: 'Add one Kraken X60', exact: true })).toBeEnabled();
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('Storage is full'); }; });
   await page.getByRole('button', { name: 'Add one Kraken X60', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Storage is full');
