@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from '../browser-fixtures';
 for(const width of [390,1440])test(`signed-out gateway has no protected-content flash ${width}`,async({page})=>{
  await page.setViewportSize({width,height:900});let flash=false;page.on('console',m=>{if(m.text()==='private-content-flash')flash=true;});await page.addInitScript(()=>new MutationObserver(()=>{if(document.querySelector('.suite-header,.sidebar,.system-card,.page-heading'))console.log('private-content-flash');}).observe(document,{childList:true,subtree:true}));
 

@@ -1,4 +1,6 @@
+import type {ToolLoan,ToolOperation} from './tool-checkouts-model';
 import type {Database, Item} from '../data';
+import type {PackingState} from './packing-model';
 export type LocationClass='permanent'|'project'|'robot'|'travel'|'temporary'|'checkout'|'other';
 export interface Balance {id:string;itemId:string;locationId:string;quantity:number;updatedAt:string;lastVerified:string;lastVerifiedBy?:string}
 export const tripStatuses=['planning','packing','in_transit','at_event','returning','closed','cancelled'] as const;
@@ -7,7 +9,7 @@ export interface Trip {id:string;name:string;event:string;destination:string;sta
 export interface Manifest {ownership:string;id:string;tripId:string;itemId:string;quantity:number;homeLocationId:string;currentLocationId:string;status:'approved'|'packed'|'returned'|'resolved';resolution:string;notes:string}
 export interface Movement {id:string;itemId:string;itemName:string;quantity:number;from:string;to:string;tripId:string;type:string;userId:string;note:string;createdAt:string}
 export interface Media {id:string;entityType:'items'|'locations';entityId:string;path:string;alt:string;updatedAt:string}
-export interface Logistics {balances:Balance[];trips:Trip[];manifest:Manifest[];movements:Movement[];media:Media[]}
+export interface Logistics {packing?:PackingState;toolLoans?:ToolLoan[];toolOperations?:ToolOperation[];balances:Balance[];trips:Trip[];manifest:Manifest[];movements:Movement[];media:Media[]}
 export type InventoryAction='move'|'adjust'|'create_trip'|'trip_status'|'approve'|'pack'|'internal'|'return'|'resolve'|'create_location';
 export type ActionData=Record<string,string|number|boolean|null>;
 export const title=(s:string)=>s.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());

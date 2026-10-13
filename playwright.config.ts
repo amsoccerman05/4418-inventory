@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/*security.test.mjs', '**/shared/**', '**/logistics-shared/**'],
+  testIgnore: ['**/*security.test.mjs', '**/shared/**', '**/logistics-shared/**', '**/packing-shared/**', '**/packing/**', '**/integration/**', '**/native/**', '**/purchasing-ui/**', '**/tool-checkouts/**'],
   fullyParallel: false,
   use: {
     baseURL: 'http://127.0.0.1:5174',
