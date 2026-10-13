@@ -15,10 +15,19 @@ test('configure → request → draft → two approvals → partial receiving su
  await page.reload();await page.getByLabel('Find restock item').fill('NEO Vortex');await expect(page.locator('.purchasing-request')).toContainText('Received 2 of 6 each');
  await page.getByRole('button',{name:'Receive delivery',exact:true}).click();await page.getByRole('dialog').getByLabel('Received each',{exact:true}).fill('2');await page.getByRole('dialog').getByLabel('Unique delivery').fill('DEMO-SLIP-1');await page.getByRole('dialog').getByRole('button',{name:'Receive delivery',exact:true}).click();await expect(page.locator('.purchasing-error')).toContainText('already been received');await page.getByRole('dialog').getByRole('button',{name:'Back',exact:true}).click();
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('frc-4418-inventory-v1')!));expect(saved.items.find((i:{name:string})=>i.name==='NEO Vortex').quantity).toBe(5);expect(saved.purchasing.receipts).toHaveLength(1);
- await page.screenshot({path:'test-results/purchasing-desktop.png',fullPage:true});
+ await page.screenshot({path:'test-results/purchasing-desktop.png',fullPage:true,animations:'disabled'});
+ await page.setViewportSize({width:390,height:844});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+ await page.screenshot({path:'test-results/purchasing-partial-mobile.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('button',{name:'Receive delivery',exact:true}).click();
+ await expect(page.getByRole('dialog').getByRole('combobox',{name:'Receiving location',exact:true})).toBeVisible();
+ await page.screenshot({path:'test-results/purchasing-receive-mobile.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('dialog').getByRole('button',{name:'Back',exact:true}).click();
 });
 test('closing setup leaves no request or stock change, mobile has no page overflow',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.goto(path);await page.getByLabel('Find restock item').fill('NEO Vortex');await page.getByRole('button',{name:'Purchasing setup for NEO Vortex'}).click();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeHidden();
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('frc-4418-inventory-v1')!).purchasing)).toBeUndefined();
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-results/purchasing-mobile.png',fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.locator('.purchasing-panel .table-wrap').evaluate(element=>{element.scrollLeft=0;});
+ await page.screenshot({path:'test-results/purchasing-mobile.png',fullPage:true,animations:'disabled'});
 });
