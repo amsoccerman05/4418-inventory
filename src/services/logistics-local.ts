@@ -1,3 +1,4 @@
+import {loanQuantityAt,approvedQuantityAt,outstandingLoans} from './tool-checkouts-model';
 import {createId} from '../utils/id';
 import type {Database} from '../data';
 import {type Logistics,type InventoryAction,type ActionData,type Manifest,type TripStatus} from './logistics-model';
@@ -32,7 +33,7 @@ export function localAction(database:Database,action:InventoryAction|'enable',d:
  const source=db.locations.find(l=>l.id===src),dest=db.locations.find(l=>l.id===dst);
  const balance=g.balances.find(b=>b.itemId===item.id&&b.locationId===src);const have=balance?.quantity??0;
  const event=(type:string,q:number,from=src,to=dst||'',text=note)=>g.movements.unshift({id:createId(),itemId:item.id,itemName:item.name,quantity:q,from,to,tripId:tid,type,userId:'local-demo',note:text,createdAt:now});
- const set=(id:string,q:number)=>{const b=g.balances.find(x=>x.itemId===item.id&&x.locationId===id);if(b){b.quantity=q;b.updatedAt=now;}else g.balances.push({id:createId(),itemId:item.id,locationId:id,quantity:q,updatedAt:now,lastVerified:''});};
+ const set=(id:string,q:number)=>{if(q<loanQuantityAt(db,item.id,id))throw new Error('Outstanding tool loans reserve this quantity. Return the specific loan first.');const b=g.balances.find(x=>x.itemId===item.id&&x.locationId===id);if(b){b.quantity=q;b.updatedAt=now;}else g.balances.push({id:createId(),itemId:item.id,locationId:id,quantity:q,updatedAt:now,lastVerified:''});};
  if(action==='resolve'&&m?.status==='approved'){if(!note.trim())throw new Error('A resolution note is required');if(!Number.isFinite(qty)||qty<=0||qty>m.quantity)throw new Error('Quantity exceeds this approval');if(qty<m.quantity){m.quantity-=qty;g.manifest.push({...m,id:createId(),quantity:qty,status:'resolved',resolution:'Not packed: '+note});}else{m.status='resolved';m.resolution='Not packed: '+note;}event('resolution',0);return db;}
  if(!Number.isFinite(qty)||qty<(action==='adjust'?0:Number.MIN_VALUE))throw new Error('Enter a valid quantity');
  if(!source||source.active===false)throw new Error('Source is unavailable');
@@ -49,6 +50,7 @@ export function localAction(database:Database,action:InventoryAction|'enable',d:
   if(dst&&(!dest||dest.active===false))throw new Error('Destination is unavailable');
   if(action==='move'&&(source.tripId||dest?.tripId))throw new Error('Use the trip manifest for travel inventory');
   if(action==='approve'){
+   if(loanQuantityAt(db,item.id,src)>0&&qty>have-loanQuantityAt(db,item.id,src)-approvedQuantityAt(db,item.id,src))throw new Error('Outstanding tool loans reduce the quantity available for packing');
    if(!trip||!['planning','packing'].includes(trip.status)||source.tripId||dest?.tripId!==tid)throw new Error('Choose a home and a destination in this trip');
    g.manifest.push({id:createId(),tripId:tid,itemId:item.id,quantity:qty,ownership:item.ownership,homeLocationId:src,currentLocationId:dst!,status:'approved',resolution:'',notes:note});event('resolution',0,src,dst,'Approved for packing');return db;
   }
@@ -66,7 +68,10 @@ export function localAction(database:Database,action:InventoryAction|'enable',d:
  item.quantity=g.balances.filter(b=>b.itemId===item.id).reduce((n,b)=>n+b.quantity,0);item.updatedAt=now;return db;
 }
 export function syncLocalBalances(before:Database,next:Database):Database {
- if(!before.logistics)return next;if(before.logistics.manifest.some(m=>!next.items.some(i=>i.id===m.itemId)))throw new Error('Trip history references this item; it cannot be deleted.');const result=structuredClone(next),g=result.logistics=structuredClone(before.logistics);
+ if(!before.logistics)return next;
+ for(const loan of outstandingLoans(before)){for(const id of [loan.homeLocationId,loan.locationId]){const location=next.locations.find(l=>l.id===id);if(!location||location.active===false||location.tripId||location.classification==='travel')throw new Error('Return outstanding tool loans before archiving or converting this location to travel.');}}
+ for(const loan of before.logistics.toolLoans??[]){const item=next.items.find(i=>i.id===loan.itemId);if(!item)throw new Error('Tool loan history references this item; it cannot be deleted.');const old=before.items.find(i=>i.id===loan.itemId)!;if(outstandingLoans(before).some(l=>l.id===loan.id)&&(item.itemType!==old.itemType||item.ownership!==old.ownership||item.locationId!==old.locationId))throw new Error('Return outstanding tool loans before changing type, ownership or home.');}
+ if(before.logistics.manifest.some(m=>!next.items.some(i=>i.id===m.itemId)))throw new Error('Trip history references this item; it cannot be deleted.');const result=structuredClone(next),g=result.logistics=structuredClone(before.logistics);
  for(const item of result.items){const old=before.items.find(i=>i.id===item.id);const home=item.locationId;
   if(!home)throw new Error('Choose a home location for tracked balances');
   const others=g.balances.filter(b=>b.itemId===item.id&&b.locationId!==(old?.locationId||home));
@@ -75,7 +80,7 @@ export function syncLocalBalances(before:Database,next:Database):Database {
   let b=g.balances.find(b=>b.itemId===item.id&&b.locationId===home);
   const otherTotal=g.balances.filter(b=>b.itemId===item.id&&b.locationId!==home).reduce((n,b)=>n+b.quantity,0);
   if(item.quantity<otherTotal)throw new Error('Correct the specific location instead of reducing allocated stock');
-  if(!b){b={id:createId(),itemId:item.id,locationId:home,quantity:0,updatedAt:item.updatedAt,lastVerified:item.lastVerified};g.balances.push(b);}b.quantity=item.quantity-otherTotal;b.lastVerified=item.lastVerified;b.updatedAt=item.updatedAt;
+  if(!b){b={id:createId(),itemId:item.id,locationId:home,quantity:0,updatedAt:item.updatedAt,lastVerified:item.lastVerified};g.balances.push(b);}if(item.quantity-otherTotal<loanQuantityAt(before,item.id,home))throw new Error('Outstanding tool loans reserve this quantity. Return the specific loan first.');b.quantity=item.quantity-otherTotal;b.lastVerified=item.lastVerified;b.updatedAt=item.updatedAt;
  }
  g.balances=g.balances.filter(b=>result.items.some(i=>i.id===b.itemId));return result;
 }

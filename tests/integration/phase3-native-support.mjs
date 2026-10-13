@@ -18,7 +18,7 @@ export async function withNativePhase(phase, { prepare, migrations, sourceFiles 
   const common = { env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 25_000, maxBuffer: 8 * 1024 * 1024 };
   const sql = input => execFileSync(join(bin, 'psql'), args, { ...common, input }).trim();
   const readSource = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
-  const sourceHashes = Object.fromEntries([...new Set([...inventoryMigrations.map(name => `supabase/migrations/${name}`), ...migrations.map(name => `supabase/migrations/${name}`), ...sourceFiles, 'tests/integration/phase3-native-support.mjs', 'tests/integration/phase3-test-support.mjs', 'tests/integration/inventory-sources.mjs'])].map(path => [path, createHash('sha256').update(readSource(path)).digest('hex')]));
+  const sourceHashes = Object.fromEntries([...new Set([...inventoryMigrations.map(name => `supabase/migrations/${name}`), ...migrations.map(name => `supabase/migrations/${name}`), ...sourceFiles, 'tests/integration/phase3-native-support.mjs', 'tests/integration/phase3-test-support.mjs', 'tests/integration/inventory-sources.mjs', 'tests/integration/inventory-safety.mjs'])].map(path => [path, createHash('sha256').update(readSource(path)).digest('hex')]));
   const last = output => JSON.parse(output.split('\n').filter(Boolean).at(-1));
   const users = Object.fromEntries(['mentor', 'admin', 'lead', 'student', 'counter', 'finance', 'coach', 'readonly'].map((name, index) => [name, `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`]));
   const actor = name => { assert(users[name], 'Unknown synthetic actor'); return `select set_config('request.jwt.claim.sub',${lit(users[name])},false);set role authenticated;`; };

@@ -4,7 +4,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {WebSocketServer} from 'ws';
-const db=new PGlite();const logistics=process.env.TEST_LOGISTICS==='1';const files=new Map();
+const db=new PGlite();const logistics=process.env.TEST_LOGISTICS==='1';const checkouts=process.env.TEST_TOOL_CHECKOUTS==='1';const files=new Map();
 const ids={mentor:'00000000-0000-4000-8000-000000000001',student:'00000000-0000-4000-8000-000000000002',lead:'00000000-0000-4000-8000-000000000003',readonly:'00000000-0000-4000-8000-000000000004',inactive:'00000000-0000-4000-8000-000000000005'};
 const area='44180000-0000-4000-8000-000000000001',power='44180000-0000-4000-8000-000000000002';
 const drawer='10000000-0000-4000-8000-000000000001',item='20000000-0000-4000-8000-000000000001';
@@ -20,6 +20,8 @@ await asUser(ids.mentor,async tx=>{
  await tx.query("insert into public.inventory_items(id,name,area_id,category,item_type,ownership,quantity,expected_quantity,minimum_quantity,target_quantity,location_id) values($1,'5/32\" Allen wrench',$2,'Tools','Tool','Shared / School',4,4,2,6,$3),('20000000-0000-4000-8000-000000000002','Power tool',$4,'Tools','Tool','FRC 4418',2,2,1,3,$3)",[item,area,drawer,power]);
 });
 if(logistics)for(const file of ['004_balances_travel_media.sql','005_private_inventory_media.sql','20261012232840_inventory_setup_location_labels.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
+if(process.env.TEST_PACKING==='1')await db.exec(await readFile(new URL('../supabase/migrations/20261012232702_packing_templates.sql',import.meta.url),'utf8'));
+if(checkouts)await db.exec(await readFile(new URL('../supabase/migrations/20261012232741_tool_checkouts.sql',import.meta.url),'utf8'));
 const jwt=id=>Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:id,aud:'authenticated',role:'authenticated',exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000)})).toString('base64url')+'.test-signature';
 const user=id=>({id,email:Object.keys(ids).find(k=>ids[k]===id)+'@example.test',aud:'authenticated',role:'authenticated',app_metadata:{provider:'email',providers:['email']},user_metadata:{},created_at:new Date().toISOString()});
 const session=id=>({access_token:jwt(id),refresh_token:'refresh-'+id,expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,token_type:'bearer',user:user(id)});
@@ -53,8 +55,11 @@ const server=createServer(async(req,res)=>{
    const fn=url.pathname.split('/').at(-1);let result;
    if(fn==='inventory_features'){send(logistics?200:404,logistics?4:{code:'PGRST202',message:'V1 fixture has no logistics migration'});return;}
    if(fn==='inventory_setup_features'){send(logistics?200:404,logistics?1:{code:'PGRST202',message:'V1 fixture has no setup migration'});return;}
-   if(fn==='setup_inventory_item')result=await asUser(id,tx=>tx.query('select public.setup_inventory_item($1,$2,$3,$4,$5) as result',[input.p_id,input.p_expected_updated_at,input.p_policy,input.p_minimum,input.p_target]));
+   if(fn==='tool_checkout_features'){send(checkouts?200:404,checkouts?true:{code:'PGRST202',message:'Fixture has no tool checkout migration'});return;}
+   if(fn==='tool_checkout_action')result=await asUser(id,tx=>tx.query('select public.tool_checkout_action($1,$2) as result',[input.p_action,JSON.stringify(input.p_data)]));
+   else if(fn==='setup_inventory_item')result=await asUser(id,tx=>tx.query('select public.setup_inventory_item($1,$2,$3,$4,$5) as result',[input.p_id,input.p_expected_updated_at,input.p_policy,input.p_minimum,input.p_target]));
    else if(fn==='change_inventory_quantity')result=await asUser(id,tx=>tx.query('select public.change_inventory_quantity($1,$2,$3,$4,$5) as result',[input.p_id,input.p_delta,input.p_quantity,input.p_expected_updated_at,input.p_verify]));
+   else if(fn==='packing_template_action')result=await asUser(id,tx=>tx.query('select public.packing_template_action($1,$2) as result',[input.p_action,JSON.stringify(input.p_data)]));
    else if(fn==='inventory_action')result=await asUser(id,tx=>tx.query('select public.inventory_action($1,$2) as result',[input.p_action,JSON.stringify(input.p_data)]));
    else if(fn==='verify_balance_location')result=await asUser(id,tx=>tx.query('select public.verify_balance_location($1,$2) as result',[input.p_location,JSON.stringify(input.p_expected)]));
    else if(fn==='verify_inventory_drawer')result=await asUser(id,tx=>tx.query('select public.verify_inventory_drawer($1,$2) as result',[input.p_location_id,JSON.stringify(input.p_expected)]));
@@ -62,7 +67,7 @@ const server=createServer(async(req,res)=>{
    else throw new Error('Unknown RPC');
    send(200,result.rows[0]?.result??null);broadcast();return;
   }
-  const table=url.pathname.split('/').at(-1);if(!['profiles','inventory_items','inventory_events','areas','locations','categories','inventory_balances','inventory_movements','trip_manifest_items','trips','inventory_media'].includes(table))throw new Error('Unknown table');
+  const table=url.pathname.split('/').at(-1);if(!['profiles','inventory_items','inventory_events','areas','locations','categories','inventory_balances','inventory_movements','trip_manifest_items','trips','inventory_media','packing_templates',...(checkouts?['tool_loans']:[])].includes(table))throw new Error('Unknown table');
   const values=[],clauses=[];for(const [key,val]of url.searchParams)if(['id','updated_at','inventory_item_id','area_id','entity_id','trip_id'].includes(key)&&val.startsWith('eq.')){values.push(val.slice(3));clauses.push(`${key}=$${values.length}`);}
   let sql;
   if(table==='inventory_media'&&req.method==='POST'){
@@ -91,4 +96,4 @@ ws.on('connection',socket=>socket.on('message',raw=>{
  }else if(message.event==='heartbeat')socket.send(JSON.stringify([message.join_ref,message.ref,'phoenix','phx_reply',{status:'ok',response:{}}]));
  else if(message.event==='phx_leave'){clients.delete(socket);socket.send(JSON.stringify([message.join_ref,message.ref,message.topic,'phx_reply',{status:'ok',response:{}}]));}
 }));
-server.listen(54329,'127.0.0.1',()=>console.log('Local Supabase contract fixture ready'));
+server.listen(Number(process.env.TEST_SUPABASE_PORT||process.env.TEST_PORT||54329),'127.0.0.1',()=>console.log('Local Supabase contract fixture ready'));

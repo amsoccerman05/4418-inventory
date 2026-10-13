@@ -1,0 +1,36 @@
+import {test,expect,type APIRequestContext,type Page} from '@playwright/test';
+const api='http://127.0.0.1:54335',path='/#checkouts';
+const home='10000000-0000-4000-8000-000000000001',wrench='20000000-0000-4000-8000-000000000001',power='20000000-0000-4000-8000-000000000002';
+const session=async(request:APIRequestContext,role='student')=>(await (await request.post(api+'/auth/v1/token?grant_type=password',{data:{email:role+'@example.test',password:'test-password'}})).json());
+const rpc=(request:APIRequestContext,token:string,name:string,data:unknown)=>request.post(api+'/rest/v1/rpc/'+name,{headers:{Authorization:'Bearer '+token},data});
+async function login(page:Page,role='student'){const s=await session(page.request,role);await page.addInitScript(s=>localStorage.setItem('sb-127-auth-token',JSON.stringify(s)),s);return s;}
+async function destination(request:APIRequestContext){const s=await session(request,'mentor');const r=await rpc(request,s.access_token,'inventory_action',{p_action:'create_location',p_data:{name:'Checkout test '+crypto.randomUUID(),classification:'project'}});expect(r.ok()).toBeTruthy();return (await r.json()).id;}
+
+test('HTTP contract uses checked SQL for read, checkout, replay and authorized return',async({request})=>{
+ const s=await session(request),to=await destination(request);const payload={p_action:'checkout',p_data:{operationId:crypto.randomUUID(),itemId:wrench,from:home,to,quantity:2,borrower:'Contract borrower',project:'Fixture project',expectedReturn:'2026-12-31'}};
+ expect(await (await rpc(request,s.access_token,'tool_checkout_features',{})).json()).toBe(true);
+ let response=await rpc(request,s.access_token,'tool_checkout_action',payload);expect(response.ok()).toBeTruthy();const id=(await response.json()).id;
+ response=await rpc(request,s.access_token,'tool_checkout_action',payload);expect((await response.json()).replayed).toBe(true);
+ const headers={Authorization:'Bearer '+s.access_token};const rows=await (await request.get(api+'/rest/v1/tool_loans?id=eq.'+id,{headers})).json();expect(rows).toHaveLength(1);expect(rows[0].borrower).toBe('Contract borrower');
+ const denied=await rpc(request,s.access_token,'inventory_action',{p_action:'move',p_data:{itemId:wrench,from:to,to:home,quantity:1}});expect(denied.status()).toBe(409);expect((await denied.json()).message).toContain('Outstanding tool loans');
+ const read=await session(request,'readonly');response=await rpc(request,read.access_token,'tool_checkout_action',{p_action:'return',p_data:{operationId:crypto.randomUUID(),loanId:id,quantity:2,updatedAt:rows[0].updated_at}});expect(response.status()).toBe(403);
+ response=await rpc(request,s.access_token,'tool_checkout_action',{p_action:'return',p_data:{operationId:crypto.randomUUID(),loanId:id,quantity:2,updatedAt:rows[0].updated_at}});expect(response.ok()).toBeTruthy();
+ const returned=await (await request.get(api+'/rest/v1/tool_loans?id=eq.'+id,{headers})).json();expect(returned[0].status).toBe('returned');
+});
+
+test('shared full-app checkout/partial return persists and receipt recovers a lost response',async({page})=>{
+ const to=await destination(page.request);await login(page);await page.goto(path);await page.getByRole('button',{name:'Check out tool',exact:true}).click();await page.getByLabel('Tool to check out').selectOption(power);await page.getByLabel('Checked-out tool location').selectOption(to);await page.getByLabel('Who has the tool').fill('UI borrower');await page.getByLabel('Project / purpose').fill('Test assembly');await page.getByLabel('Quantity',{exact:true}).fill('2');await page.getByLabel('Expected return').fill('2026-12-31');
+ const operationIds:string[]=[];let dropped=false;await page.route('**/rest/v1/rpc/tool_checkout_action',async route=>{operationIds.push(route.request().postDataJSON().p_data.operationId);if(!dropped){dropped=true;await route.fetch();await route.abort('failed');}else await route.continue();});
+ await page.getByRole('button',{name:'Confirm checkout',exact:true}).click();await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Retry this same request');await page.getByRole('button',{name:'Retry same checkout',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.checkout-card').filter({hasText:'UI borrower'})).toHaveCount(1);expect(operationIds).toHaveLength(2);expect(operationIds[0]).toBe(operationIds[1]);
+ await page.getByRole('button',{name:'Return tools',exact:true}).click();await page.getByLabel('Quantity to return').fill('1');await page.getByRole('button',{name:'Confirm return',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByText('1 / 2',{exact:true})).toBeVisible();await page.reload();await expect(page.getByText('1 / 2',{exact:true})).toBeVisible();
+ await page.screenshot({path:'test-results/tool-checkouts-shared-desktop.png',fullPage:true});await page.getByRole('button',{name:'Return tools',exact:true}).click();await page.getByRole('button',{name:'Confirm return',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.checkout-card')).toHaveCount(0);
+});
+
+test('shared readonly UI remains read-only',async({page})=>{await login(page,'readonly');await page.goto(path);await expect(page.getByRole('heading',{name:'Tool checkouts',exact:true,level:2})).toBeVisible();await expect(page.getByRole('button',{name:'Check out tool',exact:true})).toHaveCount(0);await page.getByLabel('Filter tool loans').selectOption('all');await expect(page.getByRole('button',{name:'Return tools',exact:true})).toHaveCount(0);});
+
+test('stale shared return shows current loan and permits explicit re-review',async({page})=>{
+ const s=await login(page),to=await destination(page.request);let response=await rpc(page.request,s.access_token,'tool_checkout_action',{p_action:'checkout',p_data:{operationId:crypto.randomUUID(),itemId:power,from:home,to,quantity:2,borrower:'Stale dialog borrower',expectedReturn:'2026-12-31'}});expect(response.ok()).toBeTruthy();const id=(await response.json()).id;
+ await page.goto(path);await page.locator('.checkout-card').filter({hasText:'Stale dialog borrower'}).getByRole('button',{name:'Return tools',exact:true}).click();await expect(page.getByLabel('Quantity to return')).toHaveValue('2');
+ const rows=await (await page.request.get(api+'/rest/v1/tool_loans?id=eq.'+id,{headers:{Authorization:'Bearer '+s.access_token}})).json();response=await rpc(page.request,s.access_token,'tool_checkout_action',{p_action:'return',p_data:{operationId:crypto.randomUUID(),loanId:id,updatedAt:rows[0].updated_at,quantity:1}});expect(response.ok()).toBeTruthy();
+ await page.getByRole('button',{name:'Confirm return',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('Latest outstanding: 1');await page.getByRole('button',{name:'Review latest loan',exact:true}).click();await expect(page.getByLabel('Quantity to return')).toHaveValue('1');await page.getByRole('button',{name:'Confirm return',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.checkout-card').filter({hasText:'Stale dialog borrower'})).toHaveCount(0);
+});

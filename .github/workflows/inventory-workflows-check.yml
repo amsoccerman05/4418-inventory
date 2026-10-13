@@ -30,14 +30,37 @@ jobs:
       - run: npm run build
         env:
           VITE_INVENTORY_MODE: demo
+      - run: npm run test:models
       - run: npm run test:security
       - run: node --test tests/integration/inventory-safety.test.mjs
-      - name: Verify simultaneous transactions in an owned disposable PostgreSQL cluster
+  native-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [inventory, phase3, phase4, phase5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify isolation guards
+        run: node --test tests/integration/inventory-safety.test.mjs
+      - name: Verify independent real PostgreSQL sessions
         run: |
+          set -o pipefail
+          mkdir -p test-results/native
           PG_BIN="$(find /usr/lib/postgresql -path '*/bin/postgres' -type f -printf '%h\n' | sort -V | tail -1)"
           test -n "$PG_BIN" || { echo 'No installed PostgreSQL server binary found'; exit 1; }
-          INVENTORY_PG_BIN="$PG_BIN" node tests/native/inventory-concurrency.mjs
-          INVENTORY_PG_BIN="$PG_BIN" node tests/native/phase3-concurrency.mjs
+          INVENTORY_PG_BIN="$PG_BIN" node tests/native/${{ matrix.suite }}-concurrency.mjs 2>&1 | tee test-results/native/${{ matrix.suite }}.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-native-${{ matrix.suite }}
+          path: test-results/native/
+          if-no-files-found: ignore
+          retention-days: 7
 
   browser-checks:
     runs-on: ubuntu-latest
@@ -66,6 +89,18 @@ jobs:
       - name: Verify purchasing and receiving screens
         if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
         run: npm run test:purchasing -- --output=test-results/purchasing
+      - name: Verify reusable packing templates
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:packing -- --output=test-results/packing
+      - name: Verify shared packing contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:packing-shared -- --output=test-results/packing-shared
+      - name: Verify tool checkout and return screens
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:checkouts -- --output=test-results/checkouts
+      - name: Verify shared tool checkout contracts
+        if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:checkouts-shared -- --output=test-results/checkouts-shared
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -78,7 +113,7 @@ jobs:
 
   real-api:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,5 +124,15 @@ jobs:
           version: '2.119.0'
       - name: Verify local-only isolation guards
         run: node --test tests/integration/inventory-safety.test.mjs
-      - name: Verify real disposable Auth and PostgREST
-        run: node tests/integration/inventory-local.mjs --run
+      - name: Verify all stages sequentially with real disposable Auth and PostgREST
+        run: |
+          set -o pipefail
+          mkdir -p test-results/real-api
+          node tests/integration/inventory-local.mjs --run --through-phase=5 2>&1 | tee test-results/real-api/all-phases.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-real-api-and-provenance
+          path: test-results/real-api/
+          if-no-files-found: ignore
+          retention-days: 7

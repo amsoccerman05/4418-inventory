@@ -12,10 +12,17 @@ import { inventoryMigrations } from './inventory-sources.mjs';
 import { runInventoryIntegration } from './inventory-stack.mjs';
 import { phase3Migration, phase3SourceFiles, installPhase3Prerequisites } from './phase3-sources.mjs';
 import { runPhase3Integration } from './phase3-restock.mjs';
+import { phase4Migration, phase4SourceFiles, runPhase4Integration } from './phase4-templates.mjs';
+import { phase5Migration, phase5SourceFiles, runPhase5Integration } from './phase5-checkouts.mjs';
+import { phase5CombinedSourceFiles, runCombinedIntegration } from './phase5-combined.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const mode = process.argv[2] || '--run';
 assert(['--run', '--preflight', '--prepare-only'].includes(mode), 'Use --run, --preflight, or --prepare-only');
+assert(process.argv.length <= 4, 'Only mode and an optional --through-phase=N are supported');
+const phaseFlag = process.argv[3] || '--through-phase=5';
+assert(/^--through-phase=(1|3|4|5)$/.test(phaseFlag), 'Use --through-phase=1, 3, 4, or 5');
+const throughPhase = Number(phaseFlag.split('=')[1]);
 const executable = process.env.INVENTORY_SUPABASE_CLI || 'supabase';
 assert(executable === 'supabase' || isAbsolute(executable), 'CLI override must be an absolute local binary path');
 const root = mkdtempSync(join(tmpdir(), 'inventory-integration-'));
@@ -52,11 +59,14 @@ function cleanup() {
 for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(signal, () => { cleanup(); process.exit(code); });
 
 try {
-  const sources = [
+  const sources = [...new Set([
     ...inventoryMigrations.map(name => `supabase/migrations/${name}`),
-    ...phase3SourceFiles, 'tests/integration/phase3-native-support.mjs', 'tests/native/phase3-concurrency.mjs',
-    ...['inventory-local.mjs', 'inventory-safety.mjs', 'inventory-sources.mjs', 'inventory-stack.mjs'].map(name => `tests/integration/${name}`),
-  ];
+    ...['inventory-local.mjs', 'inventory-safety.mjs', 'inventory-safety.test.mjs', 'inventory-sources.mjs', 'inventory-stack.mjs'].map(name => `tests/integration/${name}`),
+    'tests/native/inventory-concurrency.mjs', '.github/workflows/inventory-workflows-check.yml', 'package.json',
+    ...(throughPhase >= 3 ? [...phase3SourceFiles, 'tests/integration/phase3-native-support.mjs', 'tests/native/phase3-concurrency.mjs'] : []),
+    ...(throughPhase >= 4 ? [...phase4SourceFiles, 'tests/native/phase4-concurrency.mjs'] : []),
+    ...(throughPhase >= 5 ? [...phase5SourceFiles, ...phase5CombinedSourceFiles, 'tests/native/phase5-concurrency.mjs'] : []),
+  ])].sort();
   const hashes = Object.fromEntries(sources.map(path => [path, createHash('sha256').update(readFileSync(join(repo, path))).digest('hex')]));
   const version = execFileSync(executable, ['--version'], common).trim();
   assert.equal(version, CLI_VERSION, `Install the pinned official Supabase CLI ${CLI_VERSION}`);
@@ -106,7 +116,7 @@ sign_in_sign_ups = 100
 enabled = false
 `);
     if (mode === '--prepare-only') {
-      console.log(JSON.stringify({ status: 'PREPARED_ONLY_NOT_EXECUTED', cli: version, source_sha256: hashes }, null, 2));
+      console.log(JSON.stringify({ status: 'PREPARED_ONLY_NOT_EXECUTED', through_phase: throughPhase, cli: version, source_sha256: hashes }, null, 2));
     } else {
       console.log(`Starting disposable local stack ${project}; cold image pulls can take several minutes.`);
       docker(['network', 'create', '--label', `inventory.integration=${project}`, '--opt', 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1', network]);
@@ -128,16 +138,31 @@ enabled = false
       const authFunction = sql("select pg_get_functiondef('auth.uid()'::regprocedure)");
       assert(!authFunction.includes('test.uid'), 'Mock auth.uid is forbidden');
       for (const name of inventoryMigrations) sql(readFileSync(join(repo, 'supabase/migrations', name), 'utf8'));
-      installPhase3Prerequisites({ sql, readSource: path => readFileSync(join(repo, path), 'utf8') });
-      sql(readFileSync(join(repo, 'supabase/migrations', phase3Migration), 'utf8'));
       sql("notify pgrst, 'reload schema';");
       const context = { ...status, sql, registerSecret: value => secrets.push(value) };
-      const phase1Checks = await runInventoryIntegration(context);
-      const phase3Checks = await runPhase3Integration(context);
-      const checks = { phase1: phase1Checks, phase3: phase3Checks };
+      const checksByPhase = { phase1_2: await runInventoryIntegration(context) };
+      const readSource = path => readFileSync(join(repo, path), 'utf8');
+      if (throughPhase >= 3) {
+        installPhase3Prerequisites({ sql, readSource });
+        sql(readSource(`supabase/migrations/${phase3Migration}`));
+        sql("notify pgrst, 'reload schema';");
+        checksByPhase.phase3 = await runPhase3Integration(context);
+      }
+      if (throughPhase >= 4) {
+        sql(readSource(`supabase/migrations/${phase4Migration}`));
+        sql("notify pgrst, 'reload schema';");
+        checksByPhase.phase4 = await runPhase4Integration(context);
+      }
+      if (throughPhase >= 5) {
+        sql(readSource(`supabase/migrations/${phase5Migration}`));
+        sql("notify pgrst, 'reload schema';");
+        checksByPhase.phase5 = await runPhase5Integration(context);
+        checksByPhase.combined_3_4_5 = await runCombinedIntegration(context);
+      }
+      const checks = Object.values(checksByPhase).flat();
       assert.equal(sql("select pg_get_functiondef('auth.uid()'::regprocedure)"), authFunction, 'Auth function changed');
       const image = JSON.parse(docker(['inspect', `supabase_db_${project}`]))[0].Config.Image;
-      report = { status: 'PASS_REAL_SUPABASE_INTEGRATION', cli: version, node: process.version, postgres_image: image, checks, source_sha256: hashes };
+      report = { status: 'PASS_REAL_SUPABASE_INTEGRATION', cli: version, node: process.version, postgres_image: image, through_phase: throughPhase, checks, checks_by_phase: checksByPhase, source_sha256: hashes };
     }
   }
 } catch (error) {

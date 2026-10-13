@@ -1,33 +1,61 @@
 # Inventory workflow verification
 
-These tests use synthetic data only. They do not link to, reset, deploy to, or query a hosted Supabase project, and they do not read repository environment files or developer account credentials.
+These tests use synthetic data only. They never link to, reset, deploy to, or query a hosted Supabase project, and never read repository environment files or developer account credentials.
 
 ## Real Auth and PostgREST
 
 Prerequisites: Node 24, Docker on the local Unix socket, and the official Supabase CLI **2.119.0**.
 
-Run `node --test tests/integration/inventory-safety.test.mjs`, then `node tests/integration/inventory-local.mjs --run`.
+Run `npm run test:integration:guards`, then `npm run test:integration:real`.
 
-The runner creates one temporary project, a new Docker network with loopback-only published ports, and fresh Auth/PostgREST/PostgreSQL services. It verifies the empty database before applying the explicit migration list in `inventory-sources.mjs`. All Auth users and inventory records are synthetic. It checks the real Auth identity function is unchanged. Local keys and session tokens are redacted, and the owned stack/network is removed even after test failures. Nothing can select an existing URL or linked project.
+The runner creates one temporary project, a new Docker network with loopback-only published ports, and fresh Auth/PostgREST/PostgreSQL services. It verifies the empty database before applying the explicit baseline migration list in `inventory-sources.mjs`. All Auth users, current profile/position assignments, inventory, purchase orders, notifications, trips and loans are synthetic. The Finance prerequisite list contains only reviewed schema/function copies. No notification sender is started.
 
-`--preflight` checks installed prerequisites only. `--prepare-only` checks CLI and fresh configuration preparation only. Neither option is an integration pass.
+In one owned stack, the runner applies and checks each upgrade in order:
 
-Coverage includes current role/area authorization, malicious signup metadata, count/verification separation, direct REST protections, finite threshold constraints, immutable/unique labels, read-only lookup, stale saves, parallel HTTP saves, legacy patch compatibility, atomic audit failures, and current-profile revocation using an existing Auth session.
+1. Setup, immutable location labels and baseline logistics
+2. Restock requests, real Finance draft/approval/school-submission RPCs and receiving
+3. Reusable packing templates and freshly reviewed approvals
+4. Tool custody, returns and reservation guards
+5. A combined receipt into a checked-out location, fresh template approval, borrower return and trip pack/return regression
+
+It verifies that real `auth.uid()` stays unchanged. Local keys and session tokens are redacted. The owned stack/network is removed after success or failure. Existing URLs and linked projects are never accepted. The success report groups checks by phase and includes SHA-256 provenance for executed migrations, fixture definitions, test modules, harness files, package scripts and CI workflow.
+
+Use `node tests/integration/inventory-local.mjs --run --through-phase=3` to stop after restock. `--through-phase=1`, `4` and `5` are also supported; `5` is the default. Every selection creates a fresh disposable stack. Stage-only release branches need only their own phase modules.
+
+`--preflight` checks installed prerequisites only. `--prepare-only` checks CLI and fresh configuration preparation only. Neither is an integration pass. Unknown phases and extra arguments fail closed.
+
+Coverage includes forged signup metadata, current access/area boundaries, stale versions, direct REST protections, immutable/unique labels, read-only lookup, real revision/two-person approvals, private Finance projections, conversion snapshots, duplicate and partial/final deliveries, precision validation, exact retries, atomic audit/receipt failures, separate borrower claims, ownership preservation and existing-session revocation.
 
 ## Native PostgreSQL concurrency
 
-Run `INVENTORY_PG_BIN=/usr/lib/postgresql/17/bin node tests/native/inventory-concurrency.mjs` with an installed PostgreSQL bin directory.
+With an installed PostgreSQL bin directory, run each independent runner:
 
-This creates a new private Unix-socket-only cluster with no TCP listener. Its Auth identity is explicitly synthetic; it proves database locking behavior, not real Auth. Separate psql connections are held at explicit lock gates, and `pg_stat_activity` confirms competing transactions are waiting before release. It checks competing setup saves, stale retries, count/setup races in both orders, access revocation while queued, duplicate labels, and rename/label-rewrite races.
+```sh
+INVENTORY_PG_BIN=/usr/lib/postgresql/17/bin node tests/native/inventory-concurrency.mjs
+INVENTORY_PG_BIN=/usr/lib/postgresql/17/bin node tests/native/phase3-concurrency.mjs
+INVENTORY_PG_BIN=/usr/lib/postgresql/17/bin node tests/native/phase4-concurrency.mjs
+INVENTORY_PG_BIN=/usr/lib/postgresql/17/bin node tests/native/phase5-concurrency.mjs
+```
+
+Each creates its own private Unix-socket-only cluster with no TCP listener. Its Auth identity is explicitly synthetic; it proves database locking, not real Auth. Separate `psql` sessions are held at deterministic locks, and `pg_stat_activity` confirms each competing transaction is actually waiting before release. Later-stage runners report source hashes after successful cleanup.
+
+- Baseline: competing setup/count saves, stale retries, queued revocation, label collisions and rename races
+- Phase 3 only: competing receipts, final replay, delivery-reference duplicates, queued revocation/unit changes, Finance resubmission and receipt/close-short races
+- Phase 4 only: duplicate save/approval, competing trips, stale physical reviews, reversed multi-item order, target closure and queued save revocation
+- Phase 5 plus phase 4: competing checkout/movement/return/approval, independent borrower claims, reviewed-template competition and revocation at operation (including replay), item, loan and location locks
+
+Phase 3 never imports phase 4/5 schema. Phase 4 never requires Finance or checkout schema. The combined phase 5 boundary intentionally loads phase 4 before phase 5.
 
 ## CI and artifacts
 
-`.github/workflows/inventory-workflows-check.yml` has independent database, browser, and real-API jobs. Browser tests still run if a database job fails. Each browser suite uses its own output directory so later runs preserve earlier screenshots. The `inventory-synthetic-browser-review` artifact contains desktop, mobile, print, and failure evidence produced by the suites. All three jobs must pass for complete verification. The phase 3 release additionally runs the actual Restock/purchasing browser integration, the phase 3 native concurrency runner and the phase 3 real-API suite.
+`.github/workflows/inventory-workflows-check.yml` has independent embedded-database, native-concurrency matrix, browser and real-API jobs. Native matrix failures do not cancel other phases. Browser tests still run if a database job fails; a browser install failure skips only unavailable browser execution. Each browser suite uses a separate output directory.
 
-The embedded PostgreSQL security suite and mock shared-browser suite remain useful complementary checks. Neither replaces the real Auth/PostgREST job, native concurrent-session tests, or visual review of generated screenshots.
+Artifacts:
 
-## Phase 3 purchasing and receiving
+- `inventory-synthetic-browser-review`: desktop, mobile, print and failure evidence
+- `inventory-native-{inventory,phase3,phase4,phase5}`: independent native-session checks and later-stage provenance
+- `inventory-real-api-and-provenance`: sequential real Auth/PostgREST checks, phase results and source hashes
 
-The existing `inventory-local.mjs --run` runner applies baseline/phase 1, schema-only Finance prerequisites from `phase3-sources.mjs` (including exact live Team Hub authority and current enqueue overlays), then the phase 3 migration. Both `runInventoryIntegration` and `runPhase3Integration` must pass. The JSON report identifies each suite and hashes all migration, fixture and phase 3 harness sources.
+All applicable jobs must pass for complete verification. Embedded PGlite SQL tests run serially to avoid memory contention. Embedded PostgreSQL and mocked browser checks remain complementary evidence; neither replaces real Auth/PostgREST, real concurrent-session execution or visual review of generated screenshots. Syntax, preparation and guard checks alone are never reported as runtime integration passes.
 
-Run `INVENTORY_PG_BIN=/path/to/postgresql/bin node tests/native/phase3-concurrency.mjs` for receipt version races, repeated final receipt IDs, delivery-reference duplicates, queued permission revocation, stock-unit changes, Finance revision changes and close-short races. It owns a fresh Unix-socket-only cluster and outputs source hashes; it does not accept a connection string or existing server. No real native/HTTP execution is claimed from syntax checks, PGlite tests or preflight failures.
+`npm run test:models` runs the purchasing, packing, checkout and combined state-transition regressions without starting a browser or web server. The combined checks cover loan-aware packing availability, missing/partial-return custody, restock into a loan location, stale review rejection, approval retries and independent borrower/trip returns. They also run in the database-checks job so browser installation cannot suppress them.
