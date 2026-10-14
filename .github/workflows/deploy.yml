@@ -23,6 +23,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Reject high and critical dependency advisories (including build tools)
+        run: npm audit --audit-level=high
       - name: Require production Supabase configuration
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
