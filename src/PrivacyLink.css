@@ -1,0 +1,3 @@
+.privacy-link{display:inline-flex;align-items:center;min-height:44px;padding:0 8px;color:var(--suite-primary,#006bb3);font-size:12px;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
+.privacy-link:focus-visible{outline:3px solid var(--suite-primary,#006bb3);outline-offset:3px;border-radius:3px}
+.privacy-link-context{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

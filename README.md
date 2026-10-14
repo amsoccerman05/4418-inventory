@@ -150,3 +150,16 @@ Audit rows show **Target (overall)** separately from **Current / Expected**. Dra
 ### Pending Team Management rollout
 
 This local version removes Inventory's profile editor/write repository method. Review Hub's additive `202609120003_team_management_positions.sql` and deploy its Team Management route before publishing Inventory's redirect. Existing Inventory profile reads, assigned-area permissions, stock operations and data stay unchanged. No production migration or deployment was performed for this pass.
+
+## Privacy notice review
+
+The [Team 4418 Privacy Notice](https://team.frc4418.org/privacy.html) is the canonical notice for this app. Keep the sign-in/fallback and signed-in footer links pointing there rather than copying the policy into this repository.
+
+Before shipping a change, review whether it changes:
+
+- Personal-data categories or how the data is used
+- Who uses the tool or can access its data
+- Service providers or data sharing
+- Retention, deletion, or privacy contact details
+
+If a change affects the notice, amend the canonical page alongside the release and record its updated date. Verify the links on desktop and mobile. Updating the notice does not authorize new collection, access, sharing, or retention; obtain the required approval for those changes separately.
