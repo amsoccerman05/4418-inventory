@@ -127,6 +127,10 @@ test('mobile audit and local official branding render correctly',async({page})=>
  expect(await logo.evaluate((img:HTMLImageElement)=>img.complete&&img.naturalWidth>0)).toBe(true);
  expect(await logo.getAttribute('src')).toContain('branding/4418-impulse-emblem.png');
  await page.getByRole('button',{name:'Dashboard',exact:true}).click();
+ // The production design system hides decorative artwork below 950px.
+ await expect(page.getByAltText('IMPULSE — FRC Team 4418')).toBeHidden();
+ await expect(logo).toBeVisible();
+ await page.setViewportSize({width:1440,height:900});
  await expect(page.getByAltText('IMPULSE — FRC Team 4418')).toBeVisible();
 });
 

@@ -1,0 +1,32 @@
+name: Validate privacy links
+on:
+  pull_request:
+    branches: [4418-inventory]
+    paths:
+      - '.github/workflows/privacy-links.yml'
+      - 'src/PrivacyLink.*'
+      - 'src/AuthSurface.tsx'
+      - 'src/main.tsx'
+      - 'tests/shared/privacy.spec.ts'
+      - 'README.md'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:security
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:shared
+      - run: npm run test:logistics
+      - run: npm run test:e2e
