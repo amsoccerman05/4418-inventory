@@ -119,3 +119,8 @@ a:focus-visible, button:focus-visible { outline-color: var(--suite-primary); }
 .info, .notice { color: var(--suite-primary); background: var(--suite-info-bg); }
 
 .sidebar{top:76px}.sidebar .nav-label{margin-top:8px}@media(max-width:600px){.sidebar{top:68px}}
+
+.area-assignment{margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:24px}
+.area-assignment h2{margin:0 0 8px}.area-assignment p{margin:0;color:var(--suite-muted)}
+.area-assignment .secondary{flex-shrink:0}
+@media(max-width:700px){.area-assignment{align-items:flex-start;flex-direction:column}}
