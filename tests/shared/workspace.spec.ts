@@ -21,7 +21,7 @@ test('student phone change is attributed and reaches a second device via realtim
   await expect(mentor.locator('.audit-row').filter({has:mentor.getByRole('button',{name:tool,exact:true})})).toContainText('Missing tools');
   await mentor.getByRole('button',{name:tool,exact:true}).click();await expect(mentor.getByText('Updated by Student',{exact:true})).toBeVisible();
   await expect(mentor.locator('.activity')).toContainText('4 → 3');await expect(mentor.locator('.activity')).toContainText('Student');
-  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Item name *')).toBeDisabled();await expect(page.getByLabel('Target quantity (overall)',{exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Item name *')).toBeDisabled();await expect(page.getByLabel('Team area *')).toBeDisabled();await expect(page.getByLabel('Target quantity (overall)',{exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'Verify quantity',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('verified and saved');
   await mentor.getByRole('button',{name:'Verify quantity',exact:true}).click();await expect(mentor.getByRole('dialog').getByRole('status')).toContainText('Could not verify quantity');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -39,7 +39,7 @@ test('readonly sees all inventory but cannot edit or audit; admin route is prote
 test('lead starts in assigned area and only edits its metadata',async({page})=>{
  await signIn(page,'lead');await expect(page.getByText('Fabrication Lead',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Inventory',exact:true}).click();await expect(page.getByLabel('Filter by area')).toHaveValue('44180000-0000-4000-8000-000000000001');
- await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeEnabled();await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeEnabled();await expect(page.getByLabel('Team area *').locator('option')).toHaveCount(1);await page.getByRole('button',{name:'Cancel',exact:true}).click();
  await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Power tool',exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeDisabled();await expect(page.getByLabel('Current quantity *',{exact:true})).toBeEnabled();
 });
 
@@ -72,7 +72,7 @@ for(const width of [390,1440])test(`mentor keeps Inventory administration and fo
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`test-results/team-management-link-${width}.png`,fullPage:true});
  await page.goto('/#inventory');await page.getByLabel('Search inventory').fill('5/64');await expect(page.locator('tbody tr')).toHaveCount(1);
- await page.getByRole('button',{name:'5/64" Allen wrench',exact:true}).click();await expect(page.getByRole('combobox',{name:/^Owner area/})).toHaveValue('44180000-0000-4000-8000-000000000001');
+ await page.getByRole('button',{name:'5/64" Allen wrench',exact:true}).click();await expect(page.getByRole('combobox',{name:/^Team area/})).toHaveValue('44180000-0000-4000-8000-000000000001');
 });
 
 
@@ -83,4 +83,19 @@ test('dashboard invitation callback accepts the token fragment and sets a passwo
  await page.goto('/#'+fragment.toString());await expect(page.getByRole('heading',{name:'Set your password',exact:true})).toBeVisible();
  await page.getByLabel('New password',{exact:true}).fill('new-test-password');await page.getByLabel('Confirm password',{exact:true}).fill('new-test-password');await page.getByRole('button',{name:'Save password',exact:true}).click();
  await expect(page).toHaveURL('https://team.frc4418.org/');expect(page.url()).not.toContain('access_token');
+});
+
+test('mentor can change team area without changing item location or quantity',async({page})=>{
+ await signIn(page,'mentor');await page.goto('/#inventory');
+ await page.getByRole('button',{name:'Power tool',exact:true}).click();
+ const location=await page.getByLabel('Location / Bin').inputValue();
+ const quantity=await page.getByLabel('Current quantity *',{exact:true}).inputValue();
+ await page.getByLabel('Team area *').selectOption({label:'Software'});
+ await expect(page.getByLabel('Location / Bin')).toHaveValue(location);
+ await page.getByRole('button',{name:'Save changes',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await page.reload();await page.getByRole('button',{name:'Power tool',exact:true}).click();
+ await expect(page.getByLabel('Team area *').locator('option:checked')).toHaveText('Software');
+ await expect(page.getByLabel('Location / Bin')).toHaveValue(location);
+ await expect(page.getByLabel('Current quantity *',{exact:true})).toHaveValue(quantity);
 });

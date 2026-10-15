@@ -163,3 +163,18 @@ Before shipping a change, review whether it changes:
 - Retention, deletion, or privacy contact details
 
 If a change affects the notice, amend the canonical page alongside the release and record its updated date. Verify the links on desktop and mobile. Updating the notice does not authorize new collection, access, sharing, or retention; obtain the required approval for those changes separately.
+
+## Team areas and storage locations
+
+Team-area icons are matched to area names, independent of database ordering.
+Open an item to change **Team area**, then **Save changes**. This changes the
+responsible team without changing the item's storage location, counts or balances.
+Cross-area reassignment remains restricted to mentors/admins; existing lead,
+student and readonly permissions are unchanged.
+
+Historical areas named **Closet** or **Storage Closet** are shown separately as
+**Needs team area**, with a review link and inventory/restock filters. They are
+not offered for new assignments. Existing records and their original area IDs
+remain intact until a mentor/admin explicitly selects another team area. Editing
+unrelated fields does not reassign them. This release requires no migration,
+bulk data update, new permission, or privacy-notice change.
