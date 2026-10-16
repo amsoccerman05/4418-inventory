@@ -24,7 +24,7 @@ export function AuthGate({children}:{children:(profile:UserProfile,signOut:()=>P
  if(loading)return session?<><SuiteHeader app="Inventory" name={profile?.displayName} onSignOut={()=>void signOut().catch(e=>setError(friendlyError(e)))}/><p role="status">Loading…</p></>:<AuthSurface/>;
  if(configurationError||!supabase)return <AuthSurface><p role="alert">Unable to connect securely. Please try again.</p><a href="https://team.frc4418.org/">Team sign in</a></AuthSurface>;
  if(recovery&&session)return <PasswordForm signOut={signOut} done={()=>location.replace('https://team.frc4418.org/')}/>;
- if(!session)return <AuthSurface redirect/>;
+ if(!session)return <LoginForm/>;
  if(!profile||!profile.active)return <><SuiteHeader app="Inventory" name={profile?.displayName} onSignOut={()=>void signOut().catch(e=>setError(friendlyError(e)))}/><section className="auth-card"><p role="alert">{profile?'Your account is inactive. Ask a mentor to restore access.':error}</p><button className="secondary" onClick={()=>location.reload()}>Retry</button></section></>;
  return children(profile,signOut,setProfile);
 }
@@ -32,4 +32,13 @@ function AuthFrame({children,account}:{children:ReactNode;account?:ReactNode}){r
 function PasswordForm({done,signOut}:{done:()=>void;signOut:()=>Promise<void>}){
  const [password,setPassword]=useState(''),[confirm,setConfirm]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  return <AuthFrame account={<button onClick={()=>void signOut().catch(e=>setError(friendlyError(e)))}>Sign out</button>}><form className="auth-form" onSubmit={async e=>{e.preventDefault();if(password!==confirm){setError('Passwords must match.');return;}setBusy(true);const {error}=await supabase!.auth.updateUser({password});if(error)setError(friendlyError(error));else done();setBusy(false);}}><h2>Set your password</h2><label>New password<input type="password" autoComplete="new-password" minLength={12} required value={password} onChange={e=>setPassword(e.target.value)}/></label><label>Confirm password<input type="password" autoComplete="new-password" minLength={12} required value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>{error&&<p role="alert">{error}</p>}<button className="primary" disabled={busy}>Save password</button></form></AuthFrame>;
+}
+
+function LoginForm(){
+ const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+ return <AuthSurface><h1>Inventory sign in</h1><form className="auth-form" onSubmit={async e=>{
+  e.preventDefault();if(busy)return;const form=new FormData(e.currentTarget);setBusy(true);setError('');
+  try{const {error}=await supabase!.auth.signInWithPassword({email:String(form.get('email')||'').trim(),password:String(form.get('password')||'')});if(error)setError(friendlyError(error));}
+  catch(e){setError(friendlyError(e));}finally{setBusy(false);}
+ }}><label>Team account email<input name="email" type="email" autoComplete="username" required/></label><label>Password<input name="password" type="password" autoComplete="current-password" required/></label>{error&&<p role="alert">{error}</p>}<button className="primary" disabled={busy}>{busy?'Signing in…':'Sign in'}</button><p>Use your Team 4418 account. <a href="https://team.frc4418.org/">Team Hub and password help</a></p></form></AuthSurface>;
 }
