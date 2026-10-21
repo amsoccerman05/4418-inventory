@@ -59,7 +59,7 @@ The database contains `profiles`, `areas`, `locations`, `categories`, `inventory
 | Role | Permissions |
 | --- | --- |
 | readonly | View, search and filter all team inventory, locations and restock. No writes or audits. |
-| student | Readonly access plus quantity corrections, item verification and drawer audits. |
+| student | Readonly access plus item creation, quantity corrections, item verification and drawer audits. Creating an item does not grant metadata editing, deletion or photo management. |
 | lead | Student access plus item metadata and minimum/expected/target changes in their assigned area. Can view all areas; initial Inventory and Restock filters use their assigned area. |
 | admin / mentor | Full inventory and configuration access, CSV, migration, explicit demo seed; shared member administration is in Team Hub. Mentor remains a distinct role. |
 

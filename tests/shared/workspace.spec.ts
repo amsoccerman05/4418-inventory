@@ -99,3 +99,18 @@ test('mentor can change team area without changing item location or quantity',as
  await expect(page.getByLabel('Location / Bin')).toHaveValue(location);
  await expect(page.getByLabel('Current quantity *',{exact:true})).toHaveValue(quantity);
 });
+
+test('student adds an item, reloads it, and retains no metadata or delete permission',async({page})=>{
+ await signIn(page,'student');await page.goto('/#inventory');
+ await page.getByRole('button',{name:'Add item',exact:true}).click();
+ await page.getByLabel('Item name *').fill('Synthetic student creation');
+ await page.getByLabel('Team area *').selectOption({label:'Software'});
+ await page.getByLabel('Location / Bin').selectOption(drawer);
+ await page.getByRole('dialog').getByRole('button',{name:'Add item',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByText('Item added.',{exact:true})).toBeVisible();
+ await page.reload();await page.getByRole('button',{name:'Synthetic student creation',exact:true}).click();
+ await expect(page.getByLabel('Item name *')).toBeDisabled();await expect(page.getByLabel('Team area *')).toBeDisabled();
+ await expect(page.getByLabel('Team area *').locator('option:checked')).toHaveText('Software');
+ await expect(page.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Save changes',exact:true})).toHaveCount(0);
+});

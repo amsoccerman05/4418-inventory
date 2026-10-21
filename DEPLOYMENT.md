@@ -59,3 +59,16 @@ No QR codes, serialized assets, checkout, full purchasing workflow, Onshape inte
 ## Enable photos, balances and trips
 
 Migrations 004 and 005 have been applied to production. For another existing V1 workspace, follow [the owner upgrade guide](supabase/UPGRADE_LOGISTICS.md). No additional GitHub variables, DNS or Auth URL changes are required.
+
+## Student item creation
+
+Apply `supabase/migrations/20261021021658_student_item_creation.sql` once to the
+existing project before deploying this frontend. It separates creation from
+editing: active students can add items, while leads retain their assigned-area
+limits. Existing metadata editing, deletion, photos, configuration and member
+management permissions are unchanged. The migration changes no inventory rows
+or account roles. Synthetic SQL and shared-client tests cover creation and
+continued denials; do not create test inventory in production.
+
+Privacy review: this uses the existing team accounts and inventory attribution;
+it introduces no new personal-data category, provider, audience or retention.

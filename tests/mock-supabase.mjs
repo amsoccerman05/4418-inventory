@@ -20,6 +20,7 @@ await asUser(ids.mentor,async tx=>{
  await tx.query("insert into public.inventory_items(id,name,area_id,category,item_type,ownership,quantity,expected_quantity,minimum_quantity,target_quantity,location_id) values($1,'5/32\" Allen wrench',$2,'Tools','Tool','Shared / School',4,4,2,6,$3),('20000000-0000-4000-8000-000000000002','Power tool',$4,'Tools','Tool','FRC 4418',2,2,1,3,$3)",[item,area,drawer,power]);
 });
 if(logistics)for(const file of ['004_balances_travel_media.sql','005_private_inventory_media.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
+await db.exec(await readFile(new URL('../supabase/migrations/20261021021658_student_item_creation.sql',import.meta.url),'utf8'));
 const jwt=id=>Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:id,aud:'authenticated',role:'authenticated',exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000)})).toString('base64url')+'.test-signature';
 const user=id=>({id,email:Object.keys(ids).find(k=>ids[k]===id)+'@example.test',aud:'authenticated',role:'authenticated',app_metadata:{provider:'email',providers:['email']},user_metadata:{},created_at:new Date().toISOString()});
 const session=id=>({access_token:jwt(id),refresh_token:'refresh-'+id,expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,token_type:'bearer',user:user(id)});

@@ -15,7 +15,7 @@ before(async()=>{
  for(const f of ['001_initial_schema.sql','002_rls_policies.sql','003_operations_and_seed.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+f,import.meta.url),'utf8'));
  for(const [who,id]of Object.entries(users))await db.query('update public.profiles set role=$1,primary_area_id=$2 where id=$3',[who,who==='lead'?area:null,id]);
  await asUser('mentor',async tx=>{await tx.query("insert into public.locations(id,name,location_type) values($1,'P-03','Drawer'),($2,'Shooter Prototype','Storage')",[home,project]);await tx.query("insert into public.inventory_items(id,name,area_id,category,item_type,ownership,quantity,expected_quantity,minimum_quantity,target_quantity,location_id) values($1,'Kraken X60',$4,'Tools','Part','FRC 4418',8,8,4,8,$5),($2,'School Drill',$4,'Tools','Tool','Shared / School',2,2,0,2,$5),($3,'5/32 Allen Wrench',$4,'Tools','Tool','Shared / School',4,4,2,6,$5)",[motor,drill,wrench,area,home]);});
- for(const f of ['004_balances_travel_media.sql','005_private_inventory_media.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+f,import.meta.url),'utf8'));
+ for(const f of ['004_balances_travel_media.sql','005_private_inventory_media.sql','20261021021658_student_item_creation.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+f,import.meta.url),'utf8'));
 });
 after(()=>db.close());
 test('migration preserves counts and duplicate execution is explicitly rejected',async()=>{
@@ -96,4 +96,20 @@ test('balance-location audit rejects stale snapshots and stamps only that locati
  const fresh=await list();await asUser('student',tx=>tx.query('select public.verify_balance_location($1,$2)',[home,JSON.stringify(fresh)]));
  assert.equal((await scalar('select last_verified_by from public.inventory_balances where inventory_item_id=$1 and location_id=$2',[wrench,home])).last_verified_by,users.student);
  assert.equal((await scalar('select last_verified_at from public.inventory_balances where inventory_item_id=$1 and location_id=$2',[wrench,project])).last_verified_at,null);
+});
+
+test('student creation initializes home balance and cannot bypass location or photo restrictions',async()=>{
+ await assert.rejects(()=>asUser('student',async tx=>{
+  const {rows:[created]}=await tx.query("insert into public.inventory_items(name,area_id,category,quantity,location_id) values('Synthetic home part',$1,'Tools',3,$2) returning *",[area,home]);
+  assert.equal(created.created_by,users.student);
+  const record={...created,id:'20000000-0000-4000-8000-000000000098',name:'Synthetic RPC home part'};
+  await tx.query('select public.apply_inventory_changes($1)',[JSON.stringify({items:[{record}]})]);
+  const rpcBalance=await tx.query('select quantity::float from public.inventory_balances where inventory_item_id=$1 and location_id=$2',[record.id,home]);assert.equal(rpcBalance.rows[0].quantity,3);
+
+  const balance=await tx.query('select quantity::float from public.inventory_balances where inventory_item_id=$1 and location_id=$2',[created.id,home]);assert.equal(balance.rows[0].quantity,3);
+  const history=await tx.query("select user_id from public.inventory_events where inventory_item_id=$1 and event_type='item_created'",[created.id]);assert.equal(history.rows[0].user_id,users.student);
+  assert.equal((await tx.query('delete from public.inventory_items where id=$1 returning id',[created.id])).rows.length,0);
+  throw new Error('fixture rollback');
+ }),/^Error: fixture rollback$/);
+ await assert.rejects(()=>asUser('student',tx=>tx.query("insert into public.inventory_items(name,area_id,category,quantity,location_id) values('Invalid home',$1,'Tools',3,'10000000-0000-4000-8000-000000000099')",[area])),/foreign key|location|home/i);
 });

@@ -23,4 +23,5 @@ export interface InventoryRepository {
 export const isAdmin=(p:UserProfile)=>p.active&&['admin','mentor'].includes(p.role);
 export const canCount=(p:UserProfile)=>p.active&&p.role!=='readonly';
 export const canEdit=(p:UserProfile,areaId:string)=>isAdmin(p)||(p.active&&p.role==='lead'&&p.primaryAreaId===areaId);
+export const canCreate=(p:UserProfile,areaId:string)=>(p.active&&p.role==='student')||canEdit(p,areaId);
 export const demoProfile:UserProfile={id:'local-demo',displayName:'Demo workspace',email:'',role:'mentor',primaryAreaId:null,active:true};
