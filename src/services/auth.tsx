@@ -1,3 +1,4 @@
+import {navigationContext} from '../navigation-context';
 import {AuthSurface} from '../AuthSurface';
 import {SuiteHeader} from '../SuiteHeader';
 import { useEffect,useState,type ReactNode } from 'react';
@@ -10,8 +11,8 @@ export function AuthGate({children}:{children:(profile:UserProfile,signOut:()=>P
  const [session,setSession]=useState<Session|null>(null),[profile,setProfile]=useState<UserProfile|null>(null),[loading,setLoading]=useState(Boolean(supabase)),[error,setError]=useState(configurationError),[recovery,setRecovery]=useState(passwordFlow);
  useEffect(()=>{
   if(!supabase)return;let active=true;
-  const {data}=supabase.auth.onAuthStateChange((event,next)=>{if(!active)return;setSession(next);if(!next){setProfile(null);setLoading(false);}if(event==='PASSWORD_RECOVERY')setRecovery(true);});
-  void supabase.auth.getSession().then(({data,error})=>{if(!active)return;if(error){setError(friendlyError(error));setLoading(false);}else{setSession(data.session);if(!data.session)setLoading(false);}});
+  const {data}=supabase.auth.onAuthStateChange((event,next)=>{if(!active)return;navigationContext.activate(next?.user.id??null);setSession(next);if(!next){setProfile(null);setLoading(false);}if(event==='PASSWORD_RECOVERY')setRecovery(true);});
+  void supabase.auth.getSession().then(({data,error})=>{if(!active)return;if(error){setError(friendlyError(error));setLoading(false);}else{navigationContext.activate(data.session?.user.id??null);setSession(data.session);if(!data.session)setLoading(false);}});
   return()=>{active=false;data.subscription.unsubscribe();};
  },[]);
  useEffect(()=>{
@@ -19,9 +20,9 @@ export function AuthGate({children}:{children:(profile:UserProfile,signOut:()=>P
   void supabase.from('profiles').select('*').eq('id',session.user.id).single().then(({data,error})=>{if(!active)return;if(error){setError('Could not load your team profile. Ask a mentor to check your account, then retry.');setProfile(null);}else{setProfile(profileFromRow(data));setError('');}setLoading(false);});
   return()=>{active=false;};
  },[session?.user.id]);
- const signOut=async()=>{if(!supabase)return;const {error}=await supabase.auth.signOut({scope:'local'});if(error)throw error;setSession(null);setProfile(null);setRecovery(false);};
+ const signOut=async()=>{if(!supabase)return;const {error}=await supabase.auth.signOut({scope:'local'});if(error)throw error;navigationContext.activate(null);setSession(null);setProfile(null);setRecovery(false);};
  if(demoMode&&import.meta.env.DEV)return children(demoProfile,async()=>{},()=>{});
- if(loading)return session?<><SuiteHeader app="Inventory" name={profile?.displayName} onSignOut={()=>void signOut().catch(e=>setError(friendlyError(e)))}/><p role="status">Loading…</p></>:<AuthSurface/>;
+ if(loading||(session&&profile&&session.user.id!==profile.id))return session?<><SuiteHeader app="Inventory" name={profile?.displayName} onSignOut={()=>void signOut().catch(e=>setError(friendlyError(e)))}/><p role="status">Loading…</p></>:<AuthSurface/>;
  if(configurationError||!supabase)return <AuthSurface><p role="alert">Unable to connect securely. Please try again.</p><a href="https://team.frc4418.org/">Team sign in</a></AuthSurface>;
  if(recovery&&session)return <PasswordForm signOut={signOut} done={()=>location.replace('https://team.frc4418.org/')}/>;
  if(!session)return <LoginForm/>;

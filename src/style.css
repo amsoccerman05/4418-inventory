@@ -172,3 +172,5 @@ a:focus-visible, button:focus-visible { outline-color: var(--suite-primary); }
   .modal-heading .icon-button { min-width: 44px; }
   .form-grid input, .form-grid select, .form-grid textarea { font-size: 16px; }
 }
+
+.back-to-results { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin-bottom: 12px; }

@@ -121,7 +121,7 @@ npm run test:shared
 npm run test:logistics
 ```
 
-The Node-only `test:unit` suite exercises hash-history cancellation, repeated navigation and Back/Forward without requiring a browser. `tests/usability.spec.ts` and `tests/shared/usability.spec.ts` cover the student-friendly layout and unfinished item forms using only demo/local fixture data.
+The Node-only `test:unit` suite exercises hash-history cancellation, repeated navigation, Back/Forward and account-scoped navigation storage without requiring a browser. `tests/usability.spec.ts` and `tests/shared/usability.spec.ts` cover the student-friendly layout and unfinished item forms using only demo/local fixture data.
 
 No separate linter is configured. Build runs strict TypeScript checks. Browser tests can use an installed Chromium browser through `PLAYWRIGHT_CHROMIUM_EXECUTABLE`. `TEST_PRODUCTION=1 npm run test:e2e` tests the production demo build, including custom-domain root asset loading. The default browser suite explicitly uses demo mode regardless of local project settings.
 
@@ -183,3 +183,11 @@ not offered for new assignments. Existing records and their original area IDs
 remain intact until a mentor/admin explicitly selects another team area. Editing
 unrelated fields does not reassign them. This release requires no migration,
 bulk data update, new permission, or privacy-notice change.
+
+### Remembered search context
+
+Inventory search, all filters, the filter panel state and list position are remembered for the current account in this tab's session storage. Each location keeps its own search, filters and inventory/audit view preference. Opening an item or location, returning with Back/Forward or **Back to results**, and refreshing preserves that context. Changing filters or choosing **Clear filters** updates the remembered view; no team inventory records are written by navigation.
+
+Only allowlisted navigation preferences are saved—not unfinished item forms, quantities, notes, authentication tokens or permissions. Sign-out and account switches clear remembered views, and blocked/full browser storage falls back to in-memory navigation. Existing unsaved-change confirmation still protects item forms. The existing `#inventory` route is the Team Hub **Find a part** destination.
+
+`tests/search-context.spec.ts` and `tests/shared/search-context.spec.ts` cover phone/desktop navigation, refresh, retained location filters, guarded return actions, sign-out/account switching and zero inventory mutations using demo/local fixture data only.
