@@ -27,7 +27,18 @@ jobs:
       - run: npm run build
       - run: npm run test:security
       - run: npm run test:unit
-      - run: npx playwright install --with-deps chromium
+      - id: browser-install
+        run: npx playwright install --with-deps chromium
       - run: npm run test:shared
-      - run: npm run test:logistics
-      - run: npm run test:e2e
+      - if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:logistics
+      - if: ${{ !cancelled() && steps.browser-install.outcome == 'success' }}
+        run: npm run test:e2e
+      - name: Retain local-fixture browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-browser-evidence
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

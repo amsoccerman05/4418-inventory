@@ -12,11 +12,17 @@ export function createHashNavigation(browser: RouteBrowser, getGuard: () => Leav
   let approvedTarget: number | null = null;
   let navigationVersion = 0;
   history.replaceState({...history.state, [historyKey]: index}, '', location.href);
+  const signature = () => `${location.href}|${history.state?.[historyKey] ?? ''}`;
+  let observed = signature();
   const changed = () => {
+    // Browsers may report both events for one fragment transition, or a delayed no-op popstate.
+    // Neither may dismiss the editor or repeat a pending history restoration.
+    if (signature() === observed) return;
     const target: number = history.state?.[historyKey] ?? index + 1;
     // A plain # link creates an entry without state. Tag it before attempting to go back.
     if (history.state?.[historyKey] === undefined)
       history.replaceState({...history.state, [historyKey]: target}, '', location.href);
+    observed = signature();
     if (restoring) {
       if (target !== index) { history.go(index - target); return; }
       const restored = restoring; restoring = null; restored(); return;
@@ -40,6 +46,7 @@ export function createHashNavigation(browser: RouteBrowser, getGuard: () => Leav
     onNavigate(route());
   };
   browser.addEventListener('popstate', changed);
+  browser.addEventListener('hashchange', changed);
   return {
     navigate(path: string, onApproved?: () => void) {
       const version = ++navigationVersion;
@@ -49,12 +56,13 @@ export function createHashNavigation(browser: RouteBrowser, getGuard: () => Leav
           index += 1;
           history.pushState({...history.state, [historyKey]: index}, '', `#${path}`);
         }
+        observed = signature();
         onApproved?.();
         onNavigate(path);
       };
       const guard = getGuard();
       if (guard) guard.request(proceed); else proceed();
     },
-    dispose() { browser.removeEventListener('popstate', changed); },
+    dispose() { browser.removeEventListener('popstate', changed); browser.removeEventListener('hashchange', changed); },
   };
 }

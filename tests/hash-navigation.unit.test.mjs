@@ -11,7 +11,8 @@ const {createHashNavigation} = await import(`data:text/javascript;base64,${Buffe
 function fixture(initial = 'dashboard', initialState = null) {
   const entries = [{url: new URL(`#${initial}`, 'http://inventory.test/'), state: initialState}];
   let position = 0;
-  const listeners = new Set();
+  const listeners = new Map([['popstate', new Set()], ['hashchange', new Set()]]);
+  const emit = type => { for (const listener of listeners.get(type)) listener({type, state: history.state}); };
   const tasks = [];
   const navigated = [];
   let dirty = false, busy = false, pending = null;
@@ -31,13 +32,13 @@ function fixture(initial = 'dashboard', initialState = null) {
     go(delta) {
       const target = position + delta;
       if (target < 0 || target >= entries.length || delta === 0) return;
-      tasks.push(() => { position = target; for (const listener of listeners) listener({state: history.state}); });
+      tasks.push(() => { position = target; emit('popstate'); });
     },
   };
   const browser = {
     history, location,
-    addEventListener(type, callback) { assert.equal(type, 'popstate'); listeners.add(callback); },
-    removeEventListener(type, callback) { assert.equal(type, 'popstate'); listeners.delete(callback); },
+    addEventListener(type, callback) { assert.ok(listeners.has(type)); listeners.get(type).add(callback); },
+    removeEventListener(type, callback) { assert.ok(listeners.has(type)); listeners.get(type).delete(callback); },
   };
   const guard = {
     get blocked() { return dirty || busy; },
@@ -55,19 +56,19 @@ function fixture(initial = 'dashboard', initialState = null) {
     assert.equal(tasks.length, 0, 'history restoration must settle without an event loop');
   };
   return {
-    browser, controller, entries, navigated, requested, flush, flushOne,
+    browser, controller, entries, navigated, requested, flush, flushOne, emit,
     get position() { return position; },
     get hash() { return location.hash; },
     get pending() { return pending; },
-    get listenerCount() { return listeners.size; },
+    get listenerCount() { return listeners.get('popstate').size; },
     dirty(value = true) { dirty = value; }, busy(value = true) { busy = value; },
     keep() { pending = null; },
     discard() { assert.ok(pending, 'discard requires an explicit pending action'); const action = pending; pending = null; action(); flush(); },
     back(delta = 1) { history.go(-delta); flush(); },
     forward(delta = 1) { history.go(delta); flush(); },
-    hashLink(path) {
+    hashLink(path, eventType = 'popstate') {
       history.pushState(null, '', `#${path}`);
-      tasks.push(() => { for (const listener of listeners) listener({state: history.state}); });
+      tasks.push(() => { emit(eventType); });
       flush();
     },
   };
@@ -234,4 +235,47 @@ test('newer app navigation wins when requested while a Back restoration is in fl
   f.discard();
   assert.equal(f.hash, '#locations');
   assert.deepEqual(f.navigated, ['inventory', 'restock', 'locations']);
+});
+
+test('a no-op popstate must not notify navigation or close an unfinished editor', () => {
+  const f = fixture('inventory');
+  f.dirty();
+  f.emit('popstate');
+  assert.equal(f.hash, '#inventory');
+  assert.deepEqual(f.navigated, []);
+  assert.equal(f.pending, null);
+});
+
+test('a duplicate popstate after Keep editing must not bypass the dirty guard', () => {
+  const f = fixture('locations');
+  f.controller.navigate('inventory');
+  f.dirty(); f.back(); f.keep();
+  f.emit('popstate');
+  assert.equal(f.hash, '#inventory');
+  assert.deepEqual(f.navigated, ['inventory']);
+  assert.equal(f.pending, null);
+});
+
+test('clean fragment-only navigation updates the accepted route even without popstate', () => {
+  const f = fixture('dashboard');
+  f.hashLink('location/drawer', 'hashchange');
+  assert.equal(f.hash, '#location/drawer');
+  assert.deepEqual(f.navigated, ['location/drawer']);
+});
+
+test('duplicate popstate and hashchange events notify an accepted route only once', () => {
+  const f = fixture('dashboard');
+  f.hashLink('admin');
+  f.emit('hashchange'); f.emit('popstate');
+  assert.deepEqual(f.navigated, ['admin']);
+});
+
+test('dirty fragment-only navigation restores the editor before asking for discard', () => {
+  const f = fixture('inventory');
+  f.dirty(); f.hashLink('restock', 'hashchange');
+  assert.equal(f.hash, '#inventory');
+  assert.deepEqual(f.navigated, []);
+  assert.ok(f.pending);
+  f.keep(); f.emit('hashchange');
+  assert.deepEqual(f.navigated, []);
 });

@@ -344,3 +344,19 @@ test('invalid optional fields reopen More details instead of blocking submission
   await expect(page.getByLabel('Product URL')).toBeVisible();
   expect(await readDb(page)).toEqual(before);
 });
+
+test('duplicate history events never close an unfinished editor after Keep editing', async ({page}) => {
+  await page.goto('/#inventory');
+  const before = await readDb(page);
+  await openItem(page);
+  await page.getByLabel('Item name *').fill('Draft survives duplicate history event');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', {name: 'Keep editing', exact: true}).click();
+  await page.evaluate(() => {
+    window.dispatchEvent(new PopStateEvent('popstate', {state: history.state}));
+    window.dispatchEvent(new HashChangeEvent('hashchange', {oldURL: location.href, newURL: location.href}));
+  });
+  await expect(page.getByLabel('Item name *')).toHaveValue('Draft survives duplicate history event');
+  await expect(confirmDiscard(page)).toHaveCount(0);
+  expect(await readDb(page)).toEqual(before);
+});

@@ -14,6 +14,7 @@ export function useGuardedHashRoute(guard: LeaveGuardRef, onNavigate: () => void
       setRoute(path);
       onNavigateRef.current();
     });
+    setRoute(location.hash.slice(1) || 'dashboard');
     return () => { controller.current?.dispose(); controller.current = null; };
   }, [guard]);
   const navigate = (path: string, onApproved?: () => void) => controller.current?.navigate(path, onApproved);
