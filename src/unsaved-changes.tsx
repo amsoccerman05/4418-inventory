@@ -55,7 +55,7 @@ export function useUnsavedChanges(dirty: boolean, busy: boolean, guard: LeaveGua
     }
   }, [pending]);
   const keepEditing = () => { restoreFocus.current = true; setPending(null); };
-  const confirmation = pending && <div className="modal-backdrop discard-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) keepEditing(); }}>
+  const confirmation = pending && <div className="modal-backdrop discard-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); keepEditing(); } }}>
     <section className="modal discard-dialog" role="alertdialog" aria-modal="true" aria-labelledby="discard-title" aria-describedby="discard-description" onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); keepEditing(); }
       if (event.key === 'Tab') {
