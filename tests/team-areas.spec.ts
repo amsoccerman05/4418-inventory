@@ -39,6 +39,7 @@ test('team area changes independently, persists, updates filters, and preserves 
   expect(after.areas).toEqual(before.areas);
   expect(after.items[0]).toEqual({...before.items[0],areaId:'fabrication',updatedAt:after.items[0].updatedAt});
   await page.reload();
+  await page.locator('summary').filter({hasText:/Filters/}).click();
   await page.getByLabel('Filter by area').selectOption('fabrication');
   await expect(page.getByRole('button',{name:'Kraken X60',exact:true})).toBeVisible();
   await page.getByLabel('Filter by area').selectOption('legacy-closet');
@@ -52,9 +53,11 @@ test('cancel, Escape, and unrelated saves never reassign legacy Closet items',as
     await page.getByLabel('Team area *').selectOption('software');
     if(dismiss==='Escape')await page.keyboard.press('Escape');
     else await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    await page.getByRole('button',{name:'Discard changes',exact:true}).click();
     expect((await saved(page)).items[0].areaId).toBe('legacy-closet');
   }
   await page.getByRole('button',{name:'Kraken X60',exact:true}).click();
+  await page.locator('summary').filter({hasText:/More details/}).click();
   await page.getByLabel('Notes',{exact:true}).fill('Still deciding the team area');
   await page.getByRole('button',{name:'Save changes',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

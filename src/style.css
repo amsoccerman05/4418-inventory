@@ -124,3 +124,51 @@ a:focus-visible, button:focus-visible { outline-color: var(--suite-primary); }
 .area-assignment h2{margin:0 0 8px}.area-assignment p{margin:0;color:var(--suite-muted)}
 .area-assignment .secondary{flex-shrink:0}
 @media(max-width:700px){.area-assignment{align-items:flex-start;flex-direction:column}}
+
+/* Keep search one tap away; advanced filters and optional item metadata are progressive disclosure. */
+.inventory-filters { margin-top: 14px; }
+.inventory-filters > summary, .more-details > summary { cursor: pointer; font-weight: 650; padding: 12px 0; color: var(--suite-ink); }
+.inventory-filters > summary .count { margin-left: 8px; }
+.inventory-filters[open] > summary { padding-bottom: 0; }
+.more-details { border-block: 1px solid var(--suite-border); margin-top: 22px; }
+.more-details > summary span { display: block; font-weight: 400; color: var(--suite-muted); font-size: 12px; margin: 5px 0 0 16px; }
+.more-details .form-grid { padding: 8px 0 20px; }
+.editor-help { color: var(--suite-muted); font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+.mobile-field-label, .mobile-action-label { display: none; }
+.discard-backdrop { z-index: 60; }
+.discard-dialog { width: 460px; max-width: 100%; }
+.discard-dialog p { line-height: 1.6; margin-top: 14px; color: var(--suite-muted); }
+.discard-dialog .modal-actions { gap: 12px; flex-wrap: wrap; }
+
+@media (max-width: 680px) {
+  .inventory-results { overflow: visible; }
+  .inventory-results table { display: block; min-width: 0; white-space: normal; }
+  .inventory-results thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .inventory-results tbody { display: block; padding: 0 12px 12px; }
+  .inventory-results tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; border: 1px solid var(--suite-border); border-radius: 9px; padding: 16px; margin-bottom: 12px; background: var(--suite-surface); }
+  .inventory-results td { display: block; padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; }
+  .inventory-results .result-item, .inventory-results .result-area, .inventory-results .result-location, .inventory-results .result-actions { grid-column: 1 / -1; }
+  .inventory-results .result-item { min-height: 64px; }
+  .inventory-results .result-item .item-thumbnail { width: 64px; height: 64px; margin-right: 12px; }
+  .inventory-results .item-link { font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
+  .inventory-results .result-area { display: flex; flex-wrap: wrap; gap: 5px 10px; color: var(--suite-muted); }
+  .inventory-results .result-area small { margin: 0; }
+  .inventory-results .location-link { min-height: 44px; text-align: left; font-size: 14px; line-height: 1.5; }
+  .inventory-results .location-link svg { flex-shrink: 0; }
+  .mobile-field-label { display: block; font-size: 12px; font-weight: 650; margin-bottom: 4px; color: var(--suite-muted); }
+  .inventory-results .result-quantity .stepper { height: 44px; }
+  .inventory-results .result-quantity .stepper button { height: 44px; width: 44px; }
+  .inventory-results .result-quantity .stepper b { min-width: 42px; font-size: 16px; }
+  .inventory-results .unit { width: auto; max-width: none; margin-inline: 0; text-align: left; }
+  .inventory-results .result-status { align-self: center; }
+  .inventory-results .result-actions { display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--suite-border); padding-top: 8px; }
+  .inventory-results .result-actions button { min-height: 44px; padding: 8px 12px; font-size: 14px; gap: 6px; }
+  .mobile-action-label { display: inline; }
+  .inventory-filters select { flex-basis: 100%; min-height: 44px; }
+  .inventory-filters .text-button { min-height: 44px; }
+  .modal-heading h2 { overflow-wrap: anywhere; }
+  .modal-actions { gap: 12px; flex-wrap: wrap; }
+  .modal-actions button, .modal-heading .icon-button { min-height: 44px; }
+  .modal-heading .icon-button { min-width: 44px; }
+  .form-grid input, .form-grid select, .form-grid textarea { font-size: 16px; }
+}

@@ -31,6 +31,7 @@ test('moving between drawers preserves ID and updates both hierarchies',async({p
  await page.goto('/#location/ta-01');const before=await readDb(page);const item=before.items.find(i=>i.name===name)!;
  await page.getByRole('button',{name,exact:true}).click();
  await page.getByLabel('Location / Bin').selectOption('tb-15');
+ await page.locator('summary').filter({hasText:/More details/}).click();
  await page.getByLabel('Slot / Position (optional)').fill('B-05');
  await page.getByRole('button',{name:'Save changes',exact:true}).click();
  await expect(rowFor(page,name)).toHaveCount(0);
@@ -47,6 +48,7 @@ test('duplicate Allen wrench size is obvious before and after adding',async({pag
  await page.goto('/#location/ta-01');await page.getByRole('button',{name:'Add item',exact:true}).click();
  await page.getByLabel('Item name *').fill(name);
  await page.getByLabel('Current quantity *',{exact:true}).fill('1');
+ await page.locator('summary').filter({hasText:/More details/}).click();
  await page.getByLabel('Expected quantity',{exact:true}).fill('1');
  await expect(page.getByRole('dialog').getByText('Possible duplicate', {exact:false})).toBeVisible();
  await expect(page.getByRole('dialog').getByRole('button',{name:'View existing item',exact:true})).toBeVisible();
@@ -58,6 +60,7 @@ test('duplicate Allen wrench size is obvious before and after adding',async({pag
 test('current 3, expected 4, target 6 remain distinct in audit and details',async({page})=>{
  await page.goto('/#location/ta-01');await page.getByRole('button',{name,exact:true}).click();
  await page.getByLabel('Current quantity *',{exact:true}).fill('3');
+ await page.locator('summary').filter({hasText:/More details/}).click();
  await page.getByLabel('Expected quantity',{exact:true}).fill('4');
  await page.getByLabel('Target quantity (overall)',{exact:true}).fill('6');
  await expect(page.getByText('Expected: how many belong in this drawer or location. Leave blank if not yet known.')).toBeVisible();
