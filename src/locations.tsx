@@ -1,3 +1,4 @@
+import {useListContext} from './use-list-context';
 import {Photo} from './logistics';
 import {atLocation,balanceAt,locationItems,incomplete,unaccounted,title} from './services/logistics-model';
 import { createId } from './utils/id';
@@ -33,11 +34,13 @@ function AuditQuantity({ item, correct,disabled }: { item: Item; correct: (item:
  const save=async()=>{const n=Number(value);if(value.trim()&&Number.isFinite(n)&&n>=0){if(n!==item.quantity&&!await correct(item,n))setValue(String(item.quantity));}else setValue(String(item.quantity));};
  return <input className="audit-quantity" disabled={disabled} type="number" min="0" step="1" aria-label={`Current quantity for ${item.name}`} value={value} onChange={e=>setValue(e.target.value)} onBlur={save} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();if(e.key==='Escape'){e.preventDefault();setValue(String(item.quantity));}}}/>;
 }
-export function LocationDetail({ db, location, go, table, adjust, correct, verify, openItem,canWrite,busy,move }: {
- move?:(item:Item)=>void;db:Database;location:Location;go:(path:string)=>void;table:(items:Item[])=>React.ReactNode;
+export function LocationDetail({ userId, db, location, go, table, adjust, correct, verify, openItem,canWrite,busy,move }: {
+ userId:string;move?:(item:Item)=>void;db:Database;location:Location;go:(path:string)=>void;table:(items:Item[])=>React.ReactNode;
  adjust:(item:Item,delta:number)=>void;correct:(item:Item,quantity:number)=>Promise<boolean>;verify:()=>Promise<void>;canWrite:boolean;busy:boolean;openItem:(item:Item)=>void;
 }) {
- const [audit,setAudit]=useState(location.kind==='Drawer'&&canWrite);
+ const [context,setContext]=useListContext(userId,`location/${location.id}`,{audit:location.kind==='Drawer'&&canWrite});
+ const audit=context.audit===true&&location.kind==='Drawer'&&canWrite;
+ const setAudit=(audit:boolean)=>setContext({audit,scrollY:0});
  const rowsRef=useRef<HTMLDivElement>(null);
  const lastJump=useRef<string|null>(null);
  const nextMissing=()=>{
@@ -46,7 +49,8 @@ export function LocationDetail({ db, location, go, table, adjust, correct, verif
   const next=inputs[(last+1)%inputs.length];if(!next)return;
   lastJump.current=next.getAttribute('aria-label');next.scrollIntoView({block:'center'});next.focus({preventScroll:true});next.select();
  };
- const [search,setSearch]=useState(''),[area,setArea]=useState(''),[category,setCategory]=useState(''),[stock,setStock]=useState(''),[itemType,setItemType]=useState(''),[ownership,setOwnership]=useState('');
+ const {search,area,category,stock,itemType,ownership}=context;
+ const setSearch=(search:string)=>setContext({search,scrollY:0}),setArea=(area:string)=>setContext({area,scrollY:0}),setCategory=(category:string)=>setContext({category,scrollY:0}),setStock=(stock:string)=>setContext({stock,scrollY:0}),setItemType=(itemType:string)=>setContext({itemType,scrollY:0}),setOwnership=(ownership:string)=>setContext({ownership,scrollY:0});
  const direct=db.logistics?locationItems(db,location.id):db.items.filter(i=>i.locationId===location.id);
  const all=db.logistics?db.locations.filter(l=>inLocation(db.locations,l.id,location.id)).flatMap(l=>locationItems(db,l.id)):db.items.filter(i=>inLocation(db.locations,i.locationId,location.id));
  const filtered=all.filter(i=>(!search||[i.name,i.partNumber,i.vendor,i.slot,locationPath(db.locations,i.locationId)].join(' ').toLowerCase().includes(search.toLowerCase()))&&(!area||i.areaId===area)&&(!category||i.category===category)&&(!itemType||i.itemType===itemType)&&(!ownership||i.ownership===ownership)&&(!stock||(stock==='VERIFY'?needsVerification(i):stock==='MISSING'?missingTools(i):stock==='COMPLETE'?i.itemType==='Tool'&&i.expectedQuantity!==null&&!incomplete(i):status(i)===stock)));

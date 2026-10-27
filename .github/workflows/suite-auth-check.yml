@@ -5,6 +5,11 @@ on:
     paths:
       - 'src/suite-auth.ts'
       - 'src/services/auth.tsx'
+      - 'src/navigation-context.ts'
+      - 'src/use-list-context.ts'
+      - 'src/locations.tsx'
+      - 'tests/navigation-context.unit.test.mjs'
+      - 'tests/search-context.spec.ts'
       - 'src/SuiteSwitcher.tsx'
       - 'tests/shared/**'
       - 'tests/suite-auth-security.test.mjs'
@@ -24,6 +29,15 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:security
+      - run: npm run test:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:shared
       - run: npm run test:e2e
+      - name: Retain navigation browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-navigation-browser-evidence
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
