@@ -3,6 +3,12 @@ on:
   pull_request:
     branches: [4418-inventory]
     paths:
+      - 'src/main.tsx'
+      - 'src/search.ts'
+      - 'src/feedback.tsx'
+      - 'src/style.css'
+      - 'tests/search.unit.test.mjs'
+      - 'tests/search-feedback.spec.ts'
       - 'src/suite-auth.ts'
       - 'src/services/auth.tsx'
       - 'src/navigation-context.ts'
@@ -33,6 +39,7 @@ jobs:
       - run: npm run test:unit
       - run: npx playwright install --with-deps chromium
       - run: npm run test:shared
+      - run: npm run test:logistics
       - run: npm run test:e2e
       - name: Retain navigation browser evidence
         if: always()

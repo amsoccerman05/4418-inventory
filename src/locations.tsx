@@ -1,3 +1,5 @@
+import {createInventoryMatcher} from './search';
+import {EmptyState} from './feedback';
 import {useListContext} from './use-list-context';
 import {Photo} from './logistics';
 import {atLocation,balanceAt,locationItems,incomplete,unaccounted,title} from './services/logistics-model';
@@ -34,8 +36,8 @@ function AuditQuantity({ item, correct,disabled }: { item: Item; correct: (item:
  const save=async()=>{const n=Number(value);if(value.trim()&&Number.isFinite(n)&&n>=0){if(n!==item.quantity&&!await correct(item,n))setValue(String(item.quantity));}else setValue(String(item.quantity));};
  return <input className="audit-quantity" disabled={disabled} type="number" min="0" step="1" aria-label={`Current quantity for ${item.name}`} value={value} onChange={e=>setValue(e.target.value)} onBlur={save} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();if(e.key==='Escape'){e.preventDefault();setValue(String(item.quantity));}}}/>;
 }
-export function LocationDetail({ userId, db, location, go, table, adjust, correct, verify, openItem,canWrite,busy,move }: {
- userId:string;move?:(item:Item)=>void;db:Database;location:Location;go:(path:string)=>void;table:(items:Item[])=>React.ReactNode;
+export function LocationDetail({ userId, db, location, go, table, adjust, correct, verify, openItem,canWrite,busy,move,mayAddItem,addItem }: {
+ mayAddItem:boolean;addItem:()=>void;userId:string;move?:(item:Item)=>void;db:Database;location:Location;go:(path:string)=>void;table:(items:Item[])=>React.ReactNode;
  adjust:(item:Item,delta:number)=>void;correct:(item:Item,quantity:number)=>Promise<boolean>;verify:()=>Promise<void>;canWrite:boolean;busy:boolean;openItem:(item:Item)=>void;
 }) {
  const [context,setContext]=useListContext(userId,`location/${location.id}`,{audit:location.kind==='Drawer'&&canWrite});
@@ -53,7 +55,10 @@ export function LocationDetail({ userId, db, location, go, table, adjust, correc
  const setSearch=(search:string)=>setContext({search,scrollY:0}),setArea=(area:string)=>setContext({area,scrollY:0}),setCategory=(category:string)=>setContext({category,scrollY:0}),setStock=(stock:string)=>setContext({stock,scrollY:0}),setItemType=(itemType:string)=>setContext({itemType,scrollY:0}),setOwnership=(ownership:string)=>setContext({ownership,scrollY:0});
  const direct=db.logistics?locationItems(db,location.id):db.items.filter(i=>i.locationId===location.id);
  const all=db.logistics?db.locations.filter(l=>inLocation(db.locations,l.id,location.id)).flatMap(l=>locationItems(db,l.id)):db.items.filter(i=>inLocation(db.locations,i.locationId,location.id));
- const filtered=all.filter(i=>(!search||[i.name,i.partNumber,i.vendor,i.slot,locationPath(db.locations,i.locationId)].join(' ').toLowerCase().includes(search.toLowerCase()))&&(!area||i.areaId===area)&&(!category||i.category===category)&&(!itemType||i.itemType===itemType)&&(!ownership||i.ownership===ownership)&&(!stock||(stock==='VERIFY'?needsVerification(i):stock==='MISSING'?missingTools(i):stock==='COMPLETE'?i.itemType==='Tool'&&i.expectedQuantity!==null&&!incomplete(i):status(i)===stock)));
+ const matchesSearch=createInventoryMatcher(search);
+ const filtered=all.filter(i=>matchesSearch([i.name,i.partNumber,i.vendor,i.slot,locationPath(db.locations,i.locationId)])&&(!area||i.areaId===area)&&(!category||i.category===category)&&(!itemType||i.itemType===itemType)&&(!ownership||i.ownership===ownership)&&(!stock||(stock==='VERIFY'?needsVerification(i):stock==='MISSING'?missingTools(i):stock==='COMPLETE'?i.itemType==='Tool'&&i.expectedQuantity!==null&&!incomplete(i):status(i)===stock)));
+ const clearFilters=()=>setContext({search:'',area:'',category:'',stock:'',itemType:'',ownership:'',scrollY:0});
+ const filtersActive=!![search.trim(),area,category,stock,itemType,ownership].some(Boolean);
  const expected=direct.filter(i=>i.expectedQuantity!==null);
  const unconfigured=direct.filter(i=>i.expectedQuantity===null);
  const missing=expected.reduce((sum,i)=>sum+unaccounted(i),0);
@@ -70,7 +75,7 @@ export function LocationDetail({ userId, db, location, go, table, adjust, correc
      <div className="audit-item"><button className="item-link" onClick={()=>openItem(item)}>{item.name}</button><small>{item.slot?`Slot ${item.slot} · `:''}{item.ownership}</small><ItemHealth item={item}/>{move&&<button className="text-button" onClick={()=>move(item)}>Move</button>}{possibleDuplicates(db.items,item).length>0&&<small className="duplicate-flag">Possible duplicate</small>}</div>
      <div className="audit-count"><span className="count-label">Current / Expected</span><div className="stepper"><button aria-label={`Remove one ${item.name}`} disabled={busy||!canWrite||item.quantity===0} onClick={()=>adjust(item,-1)}><Minus size={14}/></button><AuditQuantity key={`${item.id}-${item.quantity}`} item={item} correct={correct} disabled={busy||!canWrite}/><span className="expected-count">/ {item.expectedQuantity??'—'}</span><button aria-label={`Add one ${item.name}`} disabled={busy||!canWrite} onClick={()=>adjust(item,1)}><Plus size={14}/></button></div><small className="audit-target">Target (overall): {item.target}</small><small>{item.lastVerified?`Verified ${new Date(item.lastVerified).toLocaleString()}`:'Not verified'}{item.expectedQuantity===null&&' · Set expected in item details'}</small></div>
     </div>)}</div>
-    {!direct.length&&<div className="empty"><h3>No items assigned to this drawer</h3><p>Add an item and set its expected quantity to start auditing.</p></div>}
+    {!direct.length&&<EmptyState title="No items assigned to this drawer" description="Ask your lead or mentor to confirm which items belong here and set their expected counts.">{mayAddItem&&<button className="secondary" disabled={busy} onClick={addItem}>Add an item here</button>}<button className="secondary" onClick={()=>go('inventory')}>Browse inventory</button></EmptyState>}
     <div className="audit-note">Expected = what belongs in this drawer. Target = what the team wants to own overall. Verification records your count; it does not change expected counts or hide missing tools.</div>
    </>:<><div className="filters"><label className="search"><Search size={18}/><input aria-label="Search location inventory" placeholder="Search items in this location…" value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="filter-row">
     <select aria-label="Filter by area" value={area} onChange={e=>setArea(e.target.value)}><option value="">All areas</option>{db.areas.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
@@ -78,8 +83,8 @@ export function LocationDetail({ userId, db, location, go, table, adjust, correc
     <select aria-label="Filter by stock status" value={stock} onChange={e=>setStock(e.target.value)}><option value="">All stock statuses</option><option value="GOOD">In stock</option><option value="LOW">Low stock</option><option value="OUT">Out of stock</option><option value="MISSING">Missing tools</option><option value="COMPLETE">Complete tools</option><option value="VERIFY">Needs verification</option></select>
     <select aria-label="Filter by item type" value={itemType} onChange={e=>setItemType(e.target.value)}><option value="">All item types</option>{itemTypes.map(type=><option key={type}>{type}</option>)}</select>
     <select aria-label="Filter by ownership" value={ownership} onChange={e=>setOwnership(e.target.value)}><option value="">All ownership</option>{ownerships.map(owner=><option key={owner}>{owner}</option>)}</select>
-    <button className="text-button" onClick={()=>{setSearch('');setArea('');setCategory('');setStock('');setItemType('');setOwnership('');}}>Clear filters</button>
-   </div></div>{table(filtered)}</>}
+    <button className="text-button" onClick={clearFilters}>Clear filters</button>
+   </div></div>{table(filtered)}{!filtered.length&&<EmptyState title={all.length?'No matching items in this location':'No items assigned here'} description={all.length?'Your search or filters did not match any items available in this location. Clear them to see this location’s inventory.':'No available items are assigned to this location or its child locations. Ask your lead or mentor if you expected to find something here.'}>{filtersActive&&<button className="secondary" onClick={clearFilters}>Clear search and filters</button>}{!all.length&&mayAddItem&&<button className="secondary" disabled={busy} onClick={addItem}>Add an item here</button>}<button className="secondary" onClick={()=>go('inventory')}>Browse inventory</button></EmptyState>}</>}
 
   </section>
  </>;
