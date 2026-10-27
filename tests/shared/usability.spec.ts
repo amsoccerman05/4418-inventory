@@ -26,7 +26,7 @@ for (const role of ['student', 'readonly', 'lead', 'mentor']) test(`${role} keep
     await expect(page.getByRole('button', {name: 'Add item', exact: true})).toBeEnabled();
     await expect(row.getByRole('button', {name: `Add one ${tool}`, exact: true})).toBeEnabled();
   }
-  await row.getByRole('button', {name: `View ${tool}`, exact: true}).click();
+  await row.getByRole('button', {name: `View details for ${tool}`, exact: true}).click();
   await page.locator('summary').filter({hasText: /More details/}).click();
   if (role === 'student' || role === 'readonly') {
     await expect(page.getByLabel('Item name *')).toBeDisabled();
