@@ -10,6 +10,7 @@ on:
       - 'src/locations.tsx'
       - 'tests/navigation-context.unit.test.mjs'
       - 'tests/search-context.spec.ts'
+      - 'tests/tools.spec.ts'
       - 'src/SuiteSwitcher.tsx'
       - 'tests/shared/**'
       - 'tests/suite-auth-security.test.mjs'

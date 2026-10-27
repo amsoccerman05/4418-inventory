@@ -90,7 +90,10 @@ test('item fields and inventory filters persist independently',async({page})=>{
  await page.reload();
  const saved=(await readDb(page)).items.find((i:{name:string})=>i.name==='BEST practice field measuring tape');
  expect(saved).toMatchObject({expectedQuantity:2,target:5,slot:'T-02',ownership:'BEST'});
- await page.locator('summary').filter({hasText:/Filters/}).click();
+ await expect(page.locator('details.inventory-filters')).toHaveAttribute('open','');
+ await expect(page.getByLabel('Filter by item type')).toHaveValue('Tool');
+ await expect(page.getByLabel('Filter by ownership')).toHaveValue('BEST');
+ await page.getByRole('button',{name:'Clear filters',exact:true}).click();
  await page.getByLabel('Filter by stock status').selectOption('MISSING');
  await expect(page.locator('tbody')).toContainText('5/32" Allen wrench');
 });
