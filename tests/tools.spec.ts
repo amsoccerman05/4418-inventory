@@ -76,11 +76,13 @@ test('hierarchical cards open children and retain quantity controls',async({page
 
 test('item fields and inventory filters persist independently',async({page})=>{
  await page.goto('/#inventory');
+ await page.locator('summary').filter({hasText:/Filters/}).click();
  await page.getByLabel('Filter by item type').selectOption('Tool');
  await page.getByLabel('Filter by ownership').selectOption('BEST');
  await expect(page.locator('tbody tr')).toHaveCount(1);
  await page.getByRole('button',{name:'BEST practice field measuring tape',exact:true}).click();
  await expect(page.getByLabel('Item type',{exact:true})).toHaveValue('Tool');
+ await page.locator('summary').filter({hasText:/More details/}).click();
  await page.getByLabel('Expected quantity',{exact:true}).fill('2');
  await page.getByLabel('Target quantity (overall)',{exact:true}).fill('5');
  await page.getByLabel('Slot / Position (optional)').fill('T-02');
@@ -88,6 +90,7 @@ test('item fields and inventory filters persist independently',async({page})=>{
  await page.reload();
  const saved=(await readDb(page)).items.find((i:{name:string})=>i.name==='BEST practice field measuring tape');
  expect(saved).toMatchObject({expectedQuantity:2,target:5,slot:'T-02',ownership:'BEST'});
+ await page.locator('summary').filter({hasText:/Filters/}).click();
  await page.getByLabel('Filter by stock status').selectOption('MISSING');
  await expect(page.locator('tbody')).toContainText('5/32" Allen wrench');
 });
@@ -107,6 +110,7 @@ test('new hierarchical drawers can be configured and receive items',async({page}
  await expect(page.getByLabel('Item type',{exact:true})).toHaveValue('Tool');
  await expect(page.getByLabel('Location / Bin')).toHaveValue(created.id);
  await page.getByLabel('Current quantity *',{exact:true}).fill('1');
+ await page.locator('summary').filter({hasText:/More details/}).click();
  await page.getByLabel('Expected quantity',{exact:true}).fill('2');
  await page.getByRole('dialog').getByRole('button',{name:'Add item',exact:true}).click();
  await expect(page.locator('.audit-row')).toContainText('Practice wrench');

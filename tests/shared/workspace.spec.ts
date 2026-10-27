@@ -40,7 +40,7 @@ test('lead starts in assigned area and only edits its metadata',async({page})=>{
  await signIn(page,'lead');await expect(page.getByText('Fabrication Lead',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Inventory',exact:true}).click();await expect(page.getByLabel('Filter by area')).toHaveValue('44180000-0000-4000-8000-000000000001');
  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeEnabled();await expect(page.getByLabel('Team area *').locator('option')).toHaveCount(1);await page.getByRole('button',{name:'Cancel',exact:true}).click();
- await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Power tool',exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeDisabled();await expect(page.getByLabel('Current quantity *',{exact:true})).toBeEnabled();
+ await page.locator('summary').filter({hasText:/Filters/}).click();await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Power tool',exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeDisabled();await expect(page.getByLabel('Current quantity *',{exact:true})).toBeEnabled();
 });
 
 test('failed quantity RPC leaves saved count unchanged',async({page})=>{
