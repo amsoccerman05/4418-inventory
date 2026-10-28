@@ -105,3 +105,45 @@ test('matches can span supplied searchable fields without reading or modifying o
   assert.deepEqual(fields, ['Bolt, hex', 'ABC-123', 'WestCoast Products', 'Hardware', null, undefined]);
   assert.equal(matches('bolt', undefined, null, ''), false);
 });
+
+test('all attached numeric punctuation is literal, including commas, grouping marks and suffixes', () => {
+  for (const [query, different] of [
+    ['ABC,123', 'ABC 123'], ['1,000', '1 000'], ['1,5', '5 1'],
+    ['ABC(123)', 'ABC 123'], ['M(6)', 'M 6'], ['5%', '5'],
+    ['123?A', '123 A'], ['ABC[123]', 'ABC 123'], ['123;', '123'],
+    ['(123)', '123'], ['1/4,', '1/4'],
+  ]) {
+    assert.equal(matches(query, different), false, `${query} must not match ${different}`);
+    assert.equal(matches(query, query), true, `exact ${query} must remain searchable`);
+  }
+  assert.equal(matches('hex bolt', 'Bolt,hex'), true);
+  assert.equal(matches('hex bolt 1/4-20', 'Bolt,hex 1/4-20'), true);
+});
+
+test('explicit numeric expressions preserve operators, operand order and multiplicity', () => {
+  for (const [query, different] of [
+    ['1 / 4', '1 4'], ['1 / 4', '4 / 1'], ['1 / 4', '1/4'],
+    ['1 x 2', '2 x 1'], ['1 × 2', '2 × 1'], ['1 x 2', '1 2'],
+    ['1 x 2', '1x2'], ['1 mm x 2 mm', '2 mm x 1 mm'],
+    ['1 mm x 2 mm', '1 cm x 2 mm'], ['1 mm x 2 mm', '1 mm x 2 cm'],
+    ['1 - 2', '2 - 1'], ['1 : 2', '2 : 1'], ['1 + 2', '2 + 1'],
+    ['1 2', '2 1'], ['1 1', '1'], ['1 /', '1'],
+    ['1 x 2 x 3', '1 x 3 x 2'], ['1" x 2"', '2" x 1"'],
+  ]) {
+    assert.equal(matches(query, different), false, `${query} must not match ${different}`);
+    assert.equal(matches(query, query), true, `exact ${query} must remain searchable`);
+  }
+  assert.equal(matches('beam 1  x   2', '1 x 2 steel beam'), true);
+  assert.equal(matches('1 / 4', '1', '/', '4'), false);
+  assert.equal(matches('1 x 2', '1', 'x', '2'), false);
+  assert.equal(matches('1 bolt 1', '1 bolt'), false);
+  assert.equal(matches('1 bolt 2', '2 bolt 1'), false);
+});
+
+test('conservative identifier matching does not guess away wrapping punctuation or cross-field expressions', () => {
+  assert.equal(matches('1/4', '(1/4)'), false);
+  assert.equal(matches('1/4', '1/4,'), false);
+  assert.equal(matches('ABC123 5/32', '5/32 wrench', 'ABC123'), false);
+  assert.equal(matches('5/32 ABC123', '5/32 wrench', 'ABC123'), false);
+  assert.equal(matches('ABC123', '5/32 wrench', 'ABC123'), true);
+});

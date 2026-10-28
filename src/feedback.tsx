@@ -1,4 +1,4 @@
-import type {ReactNode} from 'react';
+import {useEffect, useRef, type ReactNode} from 'react';
 import {Package} from 'lucide-react';
 
 export interface ReadFailure {
@@ -18,10 +18,12 @@ export function readFailure(error: unknown): ReadFailure {
  return {kind: 'other', title: 'Could not load inventory', message: 'The workspace did not return inventory successfully. Retry, or ask your lead or mentor for help if this continues.'};
 }
 
-export function ReadError({failure, retry, retrying = false, cached = false}: {failure: ReadFailure; retry: () => void; retrying?: boolean; cached?: boolean}) {
+export function ReadError({failure, retry, retrying = false, cached = false, accessBlocked = false}: {failure: ReadFailure; retry: () => void; retrying?: boolean; cached?: boolean; accessBlocked?: boolean}) {
+ const retryButton=useRef<HTMLButtonElement>(null);
+ useEffect(()=>{if(accessBlocked)retryButton.current?.focus();},[accessBlocked]);
  return <section className="read-error" role="alert" aria-label={failure.title}>
-  <div><h2>{failure.title}</h2><p>{failure.message}</p><p>{cached?'Showing the last successfully loaded inventory; it may be out of date. ':''}Your search and filters are kept when you retry.</p></div>
-  <button className="secondary" disabled={retrying} onClick={retry}>{retrying?'Retrying…':'Retry loading inventory'}</button>
+  <div><h2>{failure.title}</h2><p>{failure.message}</p>{accessBlocked&&<p>Inventory is hidden until access is verified. Unfinished item edits are kept in this tab.</p>}<p>{cached?'Showing the last successfully loaded inventory; it may be out of date. ':''}Your search and filters are kept when you retry.</p></div>
+  <button ref={retryButton} className="secondary" disabled={retrying} onClick={retry}>{retrying?'Retrying…':'Retry loading inventory'}</button>
  </section>;
 }
 

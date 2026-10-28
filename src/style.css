@@ -183,3 +183,4 @@ a:focus-visible, button:focus-visible { outline-color: var(--suite-primary); }
 .read-error>div{flex:1;min-width:0}.read-error h2{margin-bottom:8px}.read-error p{font-size:12px;line-height:1.65;overflow-wrap:anywhere}.read-error p+p{margin-top:8px}
 .auth-card .read-error{margin-top:20px;margin-bottom:0}
 @media(max-width:700px){.read-error{align-items:stretch;flex-direction:column;gap:14px}.feedback-actions{flex-direction:column;align-items:stretch}}
+.access-guarded[hidden]{display:none!important}

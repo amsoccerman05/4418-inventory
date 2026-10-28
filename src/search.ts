@@ -12,35 +12,65 @@ function normalizeTypography(value: string): string {
 }
 
 const hasNumber = (value: string) => /\p{N}/u.test(value);
+const punctuationOnly = (value: string) => !/[\p{L}\p{N}]/u.test(value);
+const numericSeparator = (value: string) => value === 'x' || value === '×' || punctuationOnly(value);
 
 function tokens(value: string): string[] {
-  // A numeric-bearing compound is one token: 1/4-20, .5, ABC-001, M6, etc.
-  // Alphabetic compounds instead split on punctuation: hex-head => hex, head.
-  // Keep fields separate so their boundaries cannot manufacture an identifier.
-  const compounds = normalizeTypography(value).match(
-    /[#.+-]*[\p{L}\p{N}][\p{L}\p{M}\p{N}]*(?:[./_:+#@%=\-'"]+[\p{L}\p{N}][\p{L}\p{M}\p{N}]*)*["']*/gu,
-  ) ?? [];
-  return compounds.flatMap(token => hasNumber(token)
-    ? [token]
-    : token.match(/[\p{L}\p{M}]+/gu) ?? []);
+  const chunks = normalizeTypography(value).match(/\S+/gu) ?? [];
+  const result: string[] = [];
+  const numeric = chunks.some(hasNumber);
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index];
+    if (!hasNumber(chunk)) {
+      // Ordinary punctuation still separates words, but literal operators in a
+      // numeric search must not disappear (including an incomplete expression).
+      result.push(...(chunk.match(/[\p{L}\p{M}]+/gu) ?? (numeric ? [chunk] : [])));
+      continue;
+    }
+    let end = index;
+    while (end + 1 < chunks.length) {
+      const next = chunks.findIndex((candidate, candidateIndex) => candidateIndex > end && hasNumber(candidate));
+      if (next < 0) break;
+      const bridge = chunks.slice(end + 1, next);
+      // Preserve explicit expressions verbatim, not as reordered operands:
+      // 1 / 4, 1 x 2, 1 mm x 2 mm, and longer chains. This does not evaluate
+      // expressions, identify units, or equate compact and spaced dimensions.
+      if (bridge.length && !bridge.some(numericSeparator)) break;
+      end = next;
+    }
+    while (end + 1 < chunks.length && punctuationOnly(chunks[end + 1])) end++;
+    // Every attached character matters for numeric identifiers, not only a
+    // selected separator list: ABC,123, ABC(123), 1,000 and 5% stay distinct.
+    result.push(chunks.slice(index, end + 1).join(' '));
+    index = end;
+  }
+  return result;
 }
 
 /**
  * AND search in any word order. Words support prefixes for partial typing;
- * numeric-bearing terms require a whole-token match, never a substring.
+ * numeric-bearing terms require a whole-token match, never a substring, and
+ * keep their order and multiplicity. Explicit expressions retain their literal
+ * intervening text. Conservative false negatives are preferable to substituting
+ * another size: even trailing punctuation and compact/spaced syntax differ.
  * An unspecified measurement mark can find a marked size (5/32 -> 5/32"),
  * but an explicit foot/inch mark must match exactly (6' must not find 6").
  */
 export function createInventoryMatcher(query: string): (fields: readonly (string | undefined | null)[]) => boolean {
   if (!query.trim()) return () => true;
-  const terms = [...new Set(tokens(query))];
+  const terms = tokens(query);
   if (!terms.length) return () => false;
   return fields => {
     const candidates = fields.flatMap(field => typeof field === 'string' ? tokens(field) : []);
-    return terms.every(term => candidates.some(candidate => {
-      if (!hasNumber(term)) return candidate.startsWith(term);
-      if (candidate === term) return true;
-      return !/["']$/.test(term) && /["']$/.test(candidate) && candidate.slice(0, -1) === term;
-    }));
+    let lastNumeric = -1;
+    return terms.every(term => {
+      if (!hasNumber(term)) return candidates.some(candidate => punctuationOnly(term) ? candidate === term : candidate.startsWith(term));
+      const found = candidates.findIndex((candidate, index) => index > lastNumeric && (
+        candidate === term || (!/["']$/.test(term) && /["']$/.test(candidate) && candidate.slice(0, -1) === term)
+      ));
+      if (found < 0) return false;
+      lastNumeric = found;
+      return true;
+    });
   };
 }

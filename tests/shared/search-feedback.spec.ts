@@ -7,6 +7,10 @@ const drawer = '10000000-0000-4000-8000-000000000001';
 const tool = '5/32" Allen wrench';
 const rawDetail = 'Internal relation private_inventory_debug_123 could not be read';
 const navigationKey = 'frc-4418-inventory-navigation-v1';
+// The installed PostgREST client retries idempotent 503/network failures three
+// times after 1s, 2s and 4s. Wait for the observed error state beyond that 7s
+// policy rather than disabling SDK retries or sleeping a fixed amount of time.
+const readFailureTimeout = 15_000;
 
 function watchInventoryWrites(page: Page) {
   const writes: string[] = [];
@@ -52,7 +56,7 @@ for (const width of [390, 1440]) {
     await page.route(inventoryReads, route => route.fulfill({status: 503, contentType: 'application/json', body: JSON.stringify({code: 'TEMPORARY_FAILURE', message: rawDetail})}));
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     const failure = page.getByRole('alert', {name: 'Could not load inventory', exact: true});
-    await expect(failure).toBeVisible();
+    await expect(failure).toBeVisible({timeout: readFailureTimeout});
     await expect(failure).toContainText('Showing the last successfully loaded inventory; it may be out of date.');
     await expect(failure).toContainText('Your search and filters are kept when you retry.');
     await expect(page.getByText(rawDetail, {exact: false})).toHaveCount(0);
@@ -64,10 +68,10 @@ for (const width of [390, 1440]) {
 
     // Retry only repeats a read, and a continuing outage does not discard input.
     await failure.getByRole('button', {name: 'Retry loading inventory', exact: true}).click();
-    await expect(failure.getByRole('button', {name: 'Retry loading inventory', exact: true})).toBeEnabled();
+    await expect(failure.getByRole('button', {name: 'Retry loading inventory', exact: true})).toBeEnabled({timeout: readFailureTimeout});
     await expectRememberedFilters(page, search);
     await page.reload();
-    await expect(page.getByRole('alert', {name: 'Could not load inventory', exact: true})).toBeVisible();
+    await expect(page.getByRole('alert', {name: 'Could not load inventory', exact: true})).toBeVisible({timeout: readFailureTimeout});
     await expect(page.locator('.inventory-results')).toHaveCount(0);
     await expect(page.getByRole('heading', {name: 'No inventory items available', exact: true})).toHaveCount(0);
     expect(await page.evaluate(key => sessionStorage.getItem(key), navigationKey)).toContain(search);
@@ -89,7 +93,7 @@ for (const width of [390, 1440]) {
     await page.route(inventoryReads, route => route.fulfill({status: 403, contentType: 'application/json', body: JSON.stringify({code: '42501', message: rawDetail})}));
     await signIn(page, 'readonly', false);
     const failure = page.getByRole('alert', {name: 'Inventory access needs attention', exact: true});
-    await expect(failure).toBeVisible();
+    await expect(failure).toBeVisible({timeout: readFailureTimeout});
     await expect(failure).toContainText('Ask your lead or mentor to check your access');
     await expect(failure).toContainText('This is not an empty inventory result.');
     await expect(page.getByText(rawDetail, {exact: false})).toHaveCount(0);
@@ -112,7 +116,7 @@ for (const width of [390, 1440]) {
     await page.route(inventoryReads, route => route.abort('failed'));
     await signIn(page, 'student', false);
     const failure = page.getByRole('alert', {name: 'Could not connect to inventory', exact: true});
-    await expect(failure).toBeVisible();
+    await expect(failure).toBeVisible({timeout: readFailureTimeout});
     await expect(failure).toContainText('Check your connection and retry.');
     await expect(page.getByRole('heading', {name: 'No inventory items available', exact: true})).toHaveCount(0);
     await expectFitsViewport(page);
@@ -151,6 +155,85 @@ for (const width of [390, 1440]) {
     expect(writes).toEqual([]);
   });
 
+  for (const failureCase of [
+    {kind: 'permission', status: 403, code: '42501', title: 'Inventory access needs attention'},
+    {kind: 'session', status: 401, code: 'PGRST301', title: 'Sign in again to refresh inventory'},
+  ]) test(`loaded ${failureCase.kind} failure hides cached actions but preserves a guarded draft at ${width}px`, async ({page}, testInfo) => {
+    await page.setViewportSize({width, height: 844});
+    const writes = watchInventoryWrites(page);
+    // A regression must be observed without actually applying a fixture write.
+    await page.route('**/rest/v1/rpc/apply_inventory_changes', route => route.abort('blockedbyclient'));
+    await signIn(page, 'student');
+    await openFilters(page);
+    const search = 'wrench ALLEN 5/32';
+    await page.getByLabel('Search inventory').fill(search);
+    await page.getByLabel('Filter by location', {exact: true}).selectOption(drawer);
+    await page.getByLabel('Filter by item type', {exact: true}).selectOption('Tool');
+    await expect(page.locator('.inventory-results tbody tr')).toHaveCount(1);
+    await page.getByRole('button', {name: 'Add item', exact: true}).click();
+    const draft = `Unsubmitted ${failureCase.kind} recovery draft ${width}`;
+    await page.getByLabel('Item name *').fill(draft);
+    await page.route(inventoryReads, route => route.fulfill({status: failureCase.status, contentType: 'application/json', body: JSON.stringify({code: failureCase.code, message: rawDetail})}));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    const failure = page.getByRole('alert', {name: failureCase.title, exact: true});
+    await expect(failure).toBeVisible({timeout: readFailureTimeout});
+    await expect(page.getByText(rawDetail, {exact: false})).toHaveCount(0);
+    await expect(page.locator('.inventory-results tbody tr')).toHaveCount(1);
+    await expect(page.locator('.inventory-results tbody tr').first()).toBeHidden();
+    await expect(page.getByRole('button', {name: tool, exact: true})).toHaveCount(0);
+    await expect(page.getByRole('button', {name: 'Add item', exact: true})).toHaveCount(0);
+    await expect(page.getByRole('button', {name: /^Add one /})).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByLabel('Item name *')).toBeHidden();
+    await expect(page.getByLabel('Item name *')).toHaveValue(draft);
+    await expectRememberedFilters(page, search);
+    await expectFitsViewport(page);
+    await page.screenshot({path: testInfo.outputPath(`loaded-${failureCase.kind}-error-${width}.png`), fullPage: true});
+
+    // Hidden controls are not the authorization boundary: stale event handlers
+    // must also fail closed until a successful fresh read restores access.
+    await page.locator('.modal form').dispatchEvent('submit');
+    await page.getByRole('button', {name: 'Sign out', exact: true}).click();
+    await expect(page.getByRole('alertdialog', {name: 'Discard unsaved changes?', exact: true})).toBeVisible();
+    await page.getByRole('button', {name: 'Keep editing', exact: true}).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(failure).toBeVisible();
+    await expect(page.getByLabel('Item name *')).toHaveValue(draft);
+    await expect(page.getByLabel('Item name *')).toBeHidden();
+    expect(writes).toEqual([]);
+
+    // A later transient failure is not evidence that access has returned. Keep
+    // the access block latched across the SDK's full 503 retry sequence.
+    await page.unroute(inventoryReads);
+    await page.route(inventoryReads, route => route.fulfill({status: 503, contentType: 'application/json', body: JSON.stringify({code: 'TEMPORARY_FAILURE', message: rawDetail})}));
+    await failure.getByRole('button', {name: 'Retry loading inventory', exact: true}).click();
+    const outage = page.getByRole('alert', {name: 'Could not load inventory', exact: true});
+    await expect(outage).toBeVisible({timeout: readFailureTimeout});
+    await expect(outage).toContainText('Inventory is hidden until access is verified.');
+    await expect(outage).not.toContainText('Showing the last successfully loaded inventory');
+    await expect(page.locator('.inventory-results tbody tr').first()).toBeHidden();
+    await expect(page.getByLabel('Item name *')).toBeHidden();
+    await expect(page.getByLabel('Item name *')).toHaveValue(draft);
+    await expect(page.getByRole('button', {name: 'Add item', exact: true})).toHaveCount(0);
+    await expect(page.getByRole('button', {name: /^Add one /})).toHaveCount(0);
+    await expectRememberedFilters(page, search);
+    await page.locator('.modal form').dispatchEvent('submit');
+    expect(writes).toEqual([]);
+
+    await page.unroute(inventoryReads);
+    await outage.getByRole('button', {name: 'Retry loading inventory', exact: true}).click();
+    await expect(page.locator('.read-error')).toHaveCount(0);
+    await expect(page.getByRole('dialog', {name: 'Add an item', exact: true})).toBeVisible();
+    await expect(page.getByLabel('Item name *')).toHaveValue(draft);
+    await expectRememberedFilters(page, search);
+    await page.getByRole('button', {name: 'Cancel', exact: true}).click();
+    await page.getByRole('button', {name: 'Discard changes', exact: true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', {name: tool, exact: true})).toBeVisible();
+    await expectRememberedFilters(page, search);
+    expect(writes).toEqual([]);
+  });
+
   test(`student empty inventory offers the existing permitted add form without submitting it at ${width}px`, async ({page}) => {
     await page.setViewportSize({width, height: 844});
     const writes = watchInventoryWrites(page);
@@ -166,3 +249,37 @@ for (const width of [390, 1440]) {
     expect(writes).toEqual([]);
   });
 }
+
+test('a concurrent inventory outage cannot mask a denied profile refresh', async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 844});
+  const writes = watchInventoryWrites(page);
+  await signIn(page, 'student');
+  const search = 'wrench 5/32';
+  await page.getByLabel('Search inventory').fill(search);
+  await expect(page.getByRole('button', {name: tool, exact: true})).toBeVisible();
+  // Install after authentication and match only the roster list, not AuthGate's
+  // individual profile read. No role or account record is changed.
+  const profilesList = (url: URL) => url.pathname === '/rest/v1/profiles' && !url.searchParams.has('id');
+  await page.route(inventoryReads, route => route.fulfill({status: 503, contentType: 'application/json', body: JSON.stringify({code: 'TEMPORARY_FAILURE', message: rawDetail})}));
+  await page.route(profilesList, route => route.fulfill({status: 403, contentType: 'application/json', body: JSON.stringify({code: '42501', message: rawDetail})}));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  const failure = page.getByRole('alert', {name: 'Inventory access needs attention', exact: true});
+  await expect(failure).toBeVisible({timeout: readFailureTimeout});
+  await expect(failure).toContainText('Inventory is hidden until access is verified.');
+  await expect(page.getByRole('alert', {name: 'Could not load inventory', exact: true})).toHaveCount(0);
+  await expect(page.getByText(rawDetail, {exact: false})).toHaveCount(0);
+  await expect(page.locator('.inventory-results tbody tr')).toHaveCount(1);
+  await expect(page.locator('.inventory-results tbody tr').first()).toBeHidden();
+  await expect(page.getByRole('button', {name: 'Add item', exact: true})).toHaveCount(0);
+  await expect(page.getByRole('button', {name: /^Add one /})).toHaveCount(0);
+  await expect(page.getByLabel('Search inventory')).toHaveValue(search);
+  expect(writes).toEqual([]);
+
+  await page.unroute(inventoryReads);
+  await page.unroute(profilesList);
+  await failure.getByRole('button', {name: 'Retry loading inventory', exact: true}).click();
+  await expect(page.locator('.read-error')).toHaveCount(0);
+  await expect(page.getByRole('button', {name: tool, exact: true})).toBeVisible();
+  await expect(page.getByLabel('Search inventory')).toHaveValue(search);
+  expect(writes).toEqual([]);
+});
