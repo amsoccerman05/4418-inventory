@@ -174,3 +174,13 @@ a:focus-visible, button:focus-visible { outline-color: var(--suite-primary); }
 }
 
 .back-to-results { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin-bottom: 12px; }
+
+/* Recovery controls remain visible even when the filters panel is collapsed. */
+.feedback-state p{max-width:580px;margin-inline:auto;line-height:1.65;white-space:normal;overflow-wrap:anywhere}
+.feedback-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:18px}
+.feedback-actions>p{flex-basis:100%}.feedback-actions button,.read-error button{min-height:44px;white-space:normal}
+.read-error{display:flex;align-items:center;gap:20px;border:1px solid var(--suite-warning);background:var(--suite-warning-bg);border-radius:8px;padding:18px;margin-bottom:20px}
+.read-error>div{flex:1;min-width:0}.read-error h2{margin-bottom:8px}.read-error p{font-size:12px;line-height:1.65;overflow-wrap:anywhere}.read-error p+p{margin-top:8px}
+.auth-card .read-error{margin-top:20px;margin-bottom:0}
+@media(max-width:700px){.read-error{align-items:stretch;flex-direction:column;gap:14px}.feedback-actions{flex-direction:column;align-items:stretch}}
+.access-guarded[hidden]{display:none!important}
