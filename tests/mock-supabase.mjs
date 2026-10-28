@@ -39,6 +39,7 @@ if(logistics){
  await db.exec(await readFile(new URL('../supabase/migrations/20261028011601_assigned_student_lead_location_creation.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../supabase/migrations/20261028020701_normal_location_types_and_rename.sql',import.meta.url),'utf8'));
  await db.exec(await adapterSql());
+ await db.exec(await readFile(new URL('../supabase/migrations/20261028170803_inventory_post_lock_authority.sql',import.meta.url),'utf8'));
 }
 
 const jwt=id=>Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:id,aud:'authenticated',role:'authenticated',exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000)})).toString('base64url')+'.test-signature';
