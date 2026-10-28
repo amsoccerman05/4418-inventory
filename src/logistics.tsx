@@ -66,8 +66,11 @@ function normalStorageLocation(db:Database,id:string){
 export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserProfile;run:RunAction}){
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');const submitting=useRef(false);
  const assigned=useAssignedLocationAccess(profile),admin=isAdmin(profile),normal=admin||assigned;
- useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role]);
+ const ownerAreas=db.areas.filter(a=>a.active!==false&&!isStorageArea(a)&&(normal||a.id===profile.primaryAreaId));
+ const legacyArea=profile.role==='lead'&&ownerAreas.some(a=>a.id===profile.primaryAreaId)?profile.primaryAreaId:null;
+ useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role,legacyArea]);
  if(!db.logistics||!profile.active||(!admin&&profile.role!=='lead'&&!assigned))return null;
+ if(!normal&&!legacyArea)return <small className="location-access-help">To add a project location, ask a mentor to assign you an active team area.</small>;
  return <><button className="primary" onClick={()=>{setError('');setOpen(true);}}><Plus size={17}/>Add location</button>{open&&<CreationModal heading="Add location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
   e.preventDefault();if(submitting.current)return;const d=new FormData(e.currentTarget);submitting.current=true;setBusy(true);setError('');
   try {
@@ -78,7 +81,7 @@ export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserPr
  }}><div className="form-grid"><label>Location name<input required pattern=".*\S.*" maxLength={200} name="name" placeholder={normal?'Toolbox A or Storage Closet':'Shooter Prototype'}/></label>
  {normal&&<><label>Parent location<select name="parentId"><option value="">Top-level location</option>{db.locations.filter(l=>l.kind!=='Drawer'&&l.kind!=='Bin'&&normalStorageLocation(db,l.id)).map(l=><option key={l.id} value={l.id}>{locationPath(db.locations,l.id)}</option>)}</select></label><label>Location type<select name="kind">{locationKinds.map(k=><option key={k}>{k}</option>)}</select></label><label>Area / Room<input name="room" maxLength={200} placeholder="Robotics Lab (inherited for child locations)"/></label></>}
  <label>Storage use<select name="classification" defaultValue={normal?'permanent':'project'}>{(normal?['permanent','project','robot','temporary','other']:['project']).map(k=><option value={k} key={k}>{k==='permanent'?'Permanent storage':title(k)}</option>)}</select></label>
- <label>Owner team area<select name="area">{normal&&<option value="">Team-wide</option>}{db.areas.filter(a=>a.active!==false&&!isStorageArea(a)&&(normal||a.id===profile.primaryAreaId)).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label><label className="full">Instructions<textarea name="note" maxLength={10000} rows={3}/></label></div>
+ <label>Owner team area<select name="area">{normal&&<option value="">Team-wide</option>}{ownerAreas.map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label><label className="full">Instructions<textarea name="note" maxLength={10000} rows={3}/></label></div>
  {normal&&<p className="muted">Location type describes the space or container (such as a closet, toolbox or box). Owner team area identifies the responsible team—not its physical storage area.</p>}
  {error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>setOpen(false)}>Cancel</button><button className="primary" disabled={busy}>{busy?'Creating…':'Create location'}</button></div></form></CreationModal>}</>;
 }
