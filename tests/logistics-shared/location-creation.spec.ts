@@ -54,3 +54,34 @@ test('cancel, close, navigation and repeated submit do not create duplicates',as
  await page.locator('form').filter({has:page.getByLabel('Location name',{exact:true})}).evaluate(form=>{(form as HTMLFormElement).requestSubmit();(form as HTMLFormElement).requestSubmit();});
  await expect(page.getByRole('dialog')).toHaveCount(0);expect(writes).toBe(1);
 });
+
+for(const width of [390,1440])for(const role of ['leadUnassigned','leadStorage','leadInactiveArea'])test(`${role} sees assignment help, not an unusable location form at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:900});await login(page,role);
+ await expect(page.getByRole('heading',{name:'A place for every part.',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);
+ await expect(page.getByText('To add a project location, ask a mentor to assign you an active team area.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add item',exact:true})).toBeEnabled();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+ if(role==='leadUnassigned')await page.screenshot({path:`test-results/location-assignment-guidance-${width}.png`,fullPage:true,animations:'disabled'});
+});
+test('account Lead with an active team area retains the existing project-only route',async({page})=>{
+ await login(page,'lead');await page.getByRole('button',{name:'Add location',exact:true}).click();
+ const form=page.getByRole('dialog',{name:'Add location',exact:true});
+ await expect(form.getByRole('combobox',{name:'Storage use',exact:true}).locator('option')).toHaveCount(1);
+ await expect(form.getByRole('combobox',{name:'Owner team area',exact:true}).locator('option')).toHaveCount(1);
+ await expect(form.getByRole('combobox',{name:'Owner team area',exact:true})).toHaveValue('44180000-0000-4000-8000-000000000001');
+ await expect(form.getByRole('combobox',{name:'Parent location',exact:true})).toHaveCount(0);
+ await form.getByLabel('Location name',{exact:true}).fill('Synthetic existing Lead project');
+ await form.getByRole('button',{name:'Create location',exact:true}).click();await expect(form).toHaveCount(0);
+});
+test('losing the primary area closes the legacy form without submitting it',async({page})=>{
+ await login(page,'lead');await page.getByRole('button',{name:'Add location',exact:true}).click();
+ await page.getByLabel('Location name',{exact:true}).fill('Do not submit after area removal');
+ let writes=0;page.on('request',request=>{if(request.url().endsWith('/rpc/inventory_action'))writes++;});
+ await page.route('**/rest/v1/profiles?*',async route=>{
+  const response=await route.fetch();const rows=await response.json();
+  await route.fulfill({response,json:rows.map((row:{id:string;primary_area_id:string|null})=>row.id==='00000000-0000-4000-8000-000000000003'?{...row,primary_area_id:null}:row)});
+ });
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);expect(writes).toBe(0);
+});

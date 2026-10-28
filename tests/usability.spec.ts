@@ -230,7 +230,8 @@ test('failed saves retain edits and still require discard; explicit verification
   await page.getByRole('button', {name: 'Keep editing', exact: true}).click();
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('Synthetic full storage'); }; });
   await page.getByRole('button', {name: 'Save changes', exact: true}).click();
-  await expect(page.getByRole('alert')).toContainText('Synthetic full storage');
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Synthetic full storage');
+  await expect(page.getByRole('dialog').getByRole('alert')).toBeFocused();
   await expect(page.getByLabel('Item name *')).toHaveValue('Metadata not verified');
   await page.getByRole('button', {name: 'Cancel', exact: true}).click();
   await page.getByRole('button', {name: 'Discard changes', exact: true}).click();

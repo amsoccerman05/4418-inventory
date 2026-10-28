@@ -44,6 +44,14 @@ test('legacy lead creation is still only a project in the assigned area',async()
  assert.equal(location.area_id,area);assert.equal(location.classification,'project');
  await assert.rejects(()=>action('lead',{classification:'permanent'}),/project locations/);
 });
+test('legacy account Lead still needs a primary area before creating a project location',async()=>{
+ const before=(await db.query('select count(*)::int count from public.locations')).rows[0].count;
+ await db.query('update public.profiles set primary_area_id=null where id=$1',[users.lead]);
+ try {
+  await assert.rejects(()=>action('lead',{}),/Assign a lead area first/);
+  assert.equal((await db.query('select count(*)::int count from public.locations')).rows[0].count,before);
+ } finally {await db.query('update public.profiles set primary_area_id=$1 where id=$2',[area,users.lead]);}
+});
 test('mentor and admin existing location creation remains available',async()=>{
  for(const who of ['mentor','admin']){const {rows:[{result}]}=await action(who,{classification:'permanent',areaId:other});assert.ok(result.id);}
 });
