@@ -48,7 +48,8 @@ function App({initialData,profile,signOut,updateProfile}:{initialData:Database;p
    const failures=[loaded,roster].flatMap(result=>result.status==='rejected'?[result.reason]:[]);
    const accessFailure=failures.find(error=>['permission','session'].includes(readFailure(error).kind));
    if(accessFailure)throw accessFailure;
-   if(failures.length)throw failures[0];
+   if(loaded.status==='rejected')throw loaded.reason;
+   if(roster.status==='rejected')throw roster.reason;
    putDb(loaded.value);setLoadError(null);setAccessBlocked(false);
   } catch(e) {
    if(mounted.current&&sequence===loadSequence.current&&!pending.current){const failure=readFailure(e);setLoadError(failure);if(failure.kind==='permission'||failure.kind==='session')setAccessBlocked(true);}
