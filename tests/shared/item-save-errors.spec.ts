@@ -36,6 +36,7 @@ for(const width of [390,1440])for(const action of ['Add item','Save changes','Sa
  });
  await dialog.getByRole('button',{name:action,exact:true}).click();
  await expect(dialog.getByRole('alert')).toContainText('Synthetic item write unavailable');await expect(dialog.getByRole('alert')).toBeFocused();
+ await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport({ratio:1});await expect(dialog.getByRole('button',{name:action,exact:true})).toBeInViewport({ratio:1});
  await expect(count).toHaveValue(quantity);if(action==='Add item')await expect(dialog.getByLabel('Item name *',{exact:true})).toHaveValue(name);
  if(action==='Save changes')await expect(dialog.getByLabel('Notes',{exact:true})).toHaveValue(name);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -44,6 +45,7 @@ for(const width of [390,1440])for(const action of ['Add item','Save changes','Sa
  await expect(count).toHaveValue(quantity);
  await dialog.getByRole('button',{name:action,exact:true}).click();
  await expect(dialog.getByRole('alert')).toContainText('Synthetic item write unavailable');await expect(dialog.getByRole('alert')).toBeFocused();
+ await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport({ratio:1});await expect(dialog.getByRole('button',{name:action,exact:true})).toBeInViewport({ratio:1});
  reject=false;
  await dialog.locator('form').evaluate(form=>{(form as HTMLFormElement).requestSubmit();(form as HTMLFormElement).requestSubmit();});
  await expect(dialog).toHaveCount(0);expect(writes).toBe(3);await expect(page.getByRole('alert')).toHaveCount(0);
