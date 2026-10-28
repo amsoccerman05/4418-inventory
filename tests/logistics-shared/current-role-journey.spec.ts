@@ -1,10 +1,13 @@
 import {test,expect,type Page,type APIRequestContext} from '@playwright/test';
 const api='http://127.0.0.1:54329',home='10000000-0000-4000-8000-000000000001',area='44180000-0000-4000-8000-000000000001',other='44180000-0000-4000-8000-000000000002';
 test.use({serviceWorkers:'block'});
+// Observed app stylesheet; fulfilled locally as empty CSS. Screenshots use
+// fallback fonts, never external font traffic. Every other external URL fails.
+const fontCSS='https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap';
 const unexpected=new WeakMap<Page,string[]>();
 test.beforeEach(async({page})=>{
  const rejected:string[]=[];unexpected.set(page,rejected);
- await page.route('**/*',async route=>{const u=new URL(route.request().url());if(['http://127.0.0.1:5176',api].includes(u.origin))await route.continue();else{rejected.push(u.href);await route.abort('blockedbyclient');}});
+ await page.route('**/*',async route=>{const u=new URL(route.request().url());if(u.href===fontCSS){await route.fulfill({contentType:'text/css',body:'/* synthetic offline font fallback */'});return;}if(['http://127.0.0.1:5176',api].includes(u.origin))await route.continue();else{rejected.push(u.href);await route.abort('blockedbyclient');}});
  await page.routeWebSocket('**/*',ws=>{const u=new URL(ws.url());if(['ws://127.0.0.1:5176','ws://127.0.0.1:54329'].includes(u.origin))ws.connectToServer();else{rejected.push(u.href);ws.close();}});
 });
 test.afterEach(async({page})=>{expect(unexpected.get(page),'No external HTTP or WebSocket traffic is allowed').toEqual([]);});
@@ -27,7 +30,7 @@ for(const width of [390,1440]){
  test(`genuine Student without area or position adds, counts, verifies and moves normal stock at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});const s=await login(page,'student','student','location/'+home),name=`Synthetic Student everyday ${width}`;
   await expect(page.getByRole('heading',{name:'TA-01',exact:true})).toBeVisible();await page.getByRole('button',{name:'Add item',exact:true}).click();
-  const dialog=page.getByRole('dialog');await dialog.getByLabel('Item name *',{exact:true}).fill(name);await dialog.getByLabel('Quantity *',{exact:true}).fill('6');await dialog.getByRole('button',{name:'Add item',exact:true}).click();await expect(dialog).toHaveCount(0);
+  const dialog=page.getByRole('dialog');await dialog.getByLabel('Item name *',{exact:true}).fill(name);await dialog.getByLabel('Total tracked quantity *',{exact:true}).fill('6');await dialog.getByRole('button',{name:'Add item',exact:true}).click();await expect(dialog).toHaveCount(0);
   const item=(await rows(page,s,'inventory_items')).find((i:any)=>i.name===name);expect(item).toBeTruthy();expect(item.created_by).toBe(s.user.id);
   await page.goto('/#inventory');await page.getByLabel('Search inventory').fill(name);await page.getByRole('button',{name,exact:true}).click();
   await expect(dialog.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);await expect(dialog.getByLabel('Upload item photo')).toHaveCount(0);
@@ -46,7 +49,7 @@ for(const width of [390,1440]){
   await action(page,mentor,'approve',{tripId:trip.id,itemId:item.id,from:home,to:trailer.id,quantity:2});const s=await login(page,'student','student','trip/'+trip.id);
   await expect(page.getByRole('button',{name:'Approve for packing',exact:true})).toHaveCount(0);await expect(page.getByLabel('Trip status',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Pack',exact:true}).click();await page.getByRole('button',{name:'Confirm pack',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button',{name:'Move within trip',exact:true}).click();await page.getByLabel('Allocation destination',{exact:true}).selectOption(pit.id);await page.getByRole('button',{name:'Confirm internal',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button',{name:'Move within trip',exact:true}).click();await page.getByRole('combobox',{name:'Allocation destination',exact:true}).selectOption(pit.id);await page.getByRole('button',{name:'Confirm internal',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
   await capture(page,'student-approved-travel',width);await expect(page.getByRole('button',{name:'Resolve',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'Return home',exact:true}).click();await page.getByRole('button',{name:'Confirm return',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(Number((await rows(page,s,'inventory_balances')).find((b:any)=>b.inventory_item_id===item.id&&b.location_id===home).quantity)).toBe(6);
  });
@@ -55,7 +58,7 @@ for(const width of [390,1440]){
   await page.getByLabel('Search inventory').fill(own.name);await page.getByRole('button',{name:own.name,exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.getByRole('button',{name:'Delete item',exact:true})).toBeEnabled();await expect(dialog.getByLabel('Upload item photo')).toHaveCount(1);
   await dialog.getByLabel('Item name *',{exact:true}).fill(own.name+' draft');await page.route('**/rpc/apply_inventory_changes',route=>route.fulfill({status:503,json:{message:'Synthetic denied write; retry is safe'}}));await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('Synthetic denied write');await expect(dialog.getByLabel('Item name *',{exact:true})).toHaveValue(own.name+' draft');await capture(page,'admin-lead-failed-save',width);
   await page.unroute('**/rpc/apply_inventory_changes');await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await expect(dialog).toHaveCount(0);
-  await page.getByLabel('Search inventory').fill(cross.name);await page.getByRole('button',{name:cross.name,exact:true}).click();await expect(dialog.getByLabel('Item name *',{exact:true})).toBeDisabled();await expect(dialog.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);await expect(dialog.getByLabel('Upload item photo')).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Save count',exact:true})).toBeEnabled();await capture(page,'admin-lead-cross-area',width);
+  await page.locator('.inventory-filters summary').click();await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByLabel('Search inventory').fill(cross.name);await page.getByRole('button',{name:cross.name,exact:true}).click();await expect(dialog.getByLabel('Item name *',{exact:true})).toBeDisabled();await expect(dialog.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);await expect(dialog.getByLabel('Upload item photo')).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Save count',exact:true})).toBeEnabled();await capture(page,'admin-lead-cross-area',width);
  });
  test(`unassigned Admin Lead gets guidance and everyday item access at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});await login(page,'adminLeadUnassigned','admin_lead','locations');await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);await expect(page.getByText('To add a project location, ask a mentor to assign you an active team area.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Add item',exact:true})).toBeEnabled();await capture(page,'admin-lead-unassigned',width);

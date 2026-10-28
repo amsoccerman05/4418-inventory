@@ -45,6 +45,8 @@ coordinator applies the ordered shared migrations after all app checks pass.
   390 and 1440 pixels, with screenshots, failed editor save/draft retry and
   approved-stock movement. All requests are restricted to synthetic loopback
   servers; unknown HTTP/WebSocket requests fail closed, service workers blocked.
+  Only the observed Google Fonts stylesheet URL is locally fulfilled with empty
+  CSS: these isolated screenshots intentionally use fallback fonts.
 - The local PGlite fixture's role CHECK and minimal shared tables are explicitly
   test prerequisites, **not** proof of the complete shared Hub authorization
   model or native PostgreSQL concurrency. Combined actual shared migrations and
