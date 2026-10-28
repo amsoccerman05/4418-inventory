@@ -17,11 +17,12 @@ export interface InventoryRepository {
  verifyDrawer(db:Database,id:string):Promise<void>;
  subscribe(onChange:()=>void,onStatus:(message:string)=>void):()=>void;
  profiles():Promise<UserProfile[]>;
+ locationCreationContext():Promise<{userId:string|null;assignedLead:boolean}>;
  history(itemId?:string,areaId?:string):Promise<InventoryEvent[]>;
  importData(source:Database,current:Database):Promise<void>;
 }
 export const isAdmin=(p:UserProfile)=>p.active&&['admin','mentor'].includes(p.role);
 export const canCount=(p:UserProfile)=>p.active&&p.role!=='readonly';
 export const canEdit=(p:UserProfile,areaId:string)=>isAdmin(p)||(p.active&&p.role==='lead'&&p.primaryAreaId===areaId);
-export const canCreate=(p:UserProfile,areaId:string)=>(p.active&&p.role==='student')||canEdit(p,areaId);
+export const canCreate=(p:UserProfile,_areaId:string)=>p.active&&['student','lead','admin','mentor'].includes(p.role);
 export const demoProfile:UserProfile={id:'local-demo',displayName:'Demo workspace',email:'',role:'mentor',primaryAreaId:null,active:true};
