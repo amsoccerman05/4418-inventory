@@ -20,20 +20,20 @@ const areas=[{id:'active',name:'Power'},{id:'inactive',name:'Software',active:fa
 const admin=p=>p.active&&['admin','mentor'].includes(p.role);
 function locationView(p,assigned=false,enabled=true){
  const source=definition(logistics,'ProjectLocationForm').replace('export ','');
- const Component=compile(source+'\nreturn ProjectLocationForm;',{React,useState:React.useState,useRef:React.useRef,useEffect:React.useEffect,useAssignedLocationAccess:()=>assigned,isAdmin:admin,isStorageArea:a=>a.id==='storage',Plus:()=>null});
+ const Component=compile(source+'\nreturn ProjectLocationForm;',{React,useState:React.useState,useRef:React.useRef,useEffect:React.useEffect,useAssignedLocationAccess:()=>assigned,isAdmin:admin,isLead:p=>p.active&&['lead','admin_lead'].includes(p.role),isStorageArea:a=>a.id==='storage',Plus:()=>null});
  return renderToStaticMarkup(React.createElement(Component,{profile:p,db:{areas,logistics:enabled?{}:null},run:()=>{throw Error('Rendering cannot write');}}));
 }
 test('unassigned account Lead sees an explanation instead of an impossible location action',()=>{
- for(const area of [null,'inactive','storage','missing']){const html=locationView(profile('lead',area));assert.doesNotMatch(html,/<button/);assert.match(html,/ask a mentor to assign you an active team area/);}
+ for(const role of ['lead','admin_lead'])for(const area of [null,'inactive','storage','missing']){const html=locationView(profile(role,area));assert.doesNotMatch(html,/<button/);assert.match(html,/ask a mentor to assign you an active team area/);}
 });
 test('legacy active-area, assigned-position and admin creation paths remain available',()=>{
  assert.match(locationView(profile('lead','active')),/Add location/);
- for(const role of ['lead','student'])assert.match(locationView(profile(role),true),/Add location/);
+ for(const role of ['lead','admin_lead','student'])assert.match(locationView(profile(role),true),/Add location/);
  for(const role of ['admin','mentor'])assert.match(locationView(profile(role)),/Add location/);
 });
 test('location hint does not invent access for students, readonly, inactive or legacy workspaces',()=>{
  for(const role of ['student','readonly'])assert.equal(locationView(profile(role)), '');
- for(const role of ['lead','student','admin','mentor'])assert.equal(locationView(profile(role,null,false),true),'');
+ for(const role of ['lead','admin_lead','student','admin','mentor'])assert.equal(locationView(profile(role,null,false),true),'');
  assert.equal(locationView(profile('lead'),false,false),'');
 });
 function writeHarness({fail=false,refreshFails=false}={}){
