@@ -43,8 +43,39 @@ export function ItemLocations({db,item,move,go,correct,verify}:{db:Database;item
 }
 export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserProfile;run:RunAction}){
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
- if(!db.logistics||(!isAdmin(profile)&&profile.role!=='lead'))return null;
- return <><button className="primary" onClick={()=>{setError('');setOpen(true);}}><Plus size={17}/>Add location</button>{open&&<CreationModal heading="Add location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{e.preventDefault();const d=new FormData(e.currentTarget);setBusy(true);if(await run('create_location',{name:String(d.get('name')).trim(),classification:String(d.get('classification')),areaId:String(d.get('area')),note:String(d.get('note'))}))setOpen(false);else setError('Location not created. Check the workspace error and try again.');setBusy(false);}}><div className="form-grid"><label>Location name<input required name="name" placeholder="Shooter Prototype"/></label><label>Classification<select name="classification">{(isAdmin(profile)?['project','robot','temporary','permanent','other']:['project']).map(k=><option value={k} key={k}>{title(k)}</option>)}</select></label><label>Owner area<select name="area">{db.areas.filter(a=>isAdmin(profile)||a.id===profile.primaryAreaId).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label><label className="full">Instructions<textarea name="note" rows={3}/></label></div>{error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>setOpen(false)}>Cancel</button><button className="primary" disabled={busy}>{busy?'Creating…':'Create location'}</button></div></form></CreationModal>}</>;
+ const submitting=useRef(false);
+ const [creationAccess,setCreationAccess]=useState<{userId:string|null;assignedLead:boolean}|null>(null);
+ useEffect(()=>{
+  let live=true,sequence=0;
+  const refresh=async()=>{const current=++sequence;const access=await repository.locationCreationContext();if(live&&current===sequence)setCreationAccess(access);};
+  setCreationAccess(null);
+  if(!profile.active||!['student','lead'].includes(profile.role))return;
+  void refresh();const timer=setInterval(()=>void refresh(),30000),focus=()=>void refresh();window.addEventListener('focus',focus);
+  return()=>{live=false;sequence++;clearInterval(timer);window.removeEventListener('focus',focus);};
+ },[profile.id,profile.active,profile.role,profile.updatedAt]);
+ const assigned=profile.active&&['student','lead'].includes(profile.role)&&creationAccess?.userId===profile.id&&creationAccess.assignedLead;
+ useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role]);
+ const admin=isAdmin(profile),allowed=profile.active&&(admin||profile.role==='lead'||assigned);
+ if(!db.logistics||!allowed)return null;
+ const normalParent=(id:string)=>{
+  const seen=new Set<string>();let current=db.locations.find(l=>l.id===id);
+  if(!current||current.kind==='Drawer'||current.kind==='Bin')return false;
+  while(current){if(['44180000-0000-4000-8000-000000000099','local-unassigned'].includes(current.id)||seen.has(current.id)||current.active===false||current.tripId||['travel','checkout'].includes(current.classification||''))return false;seen.add(current.id);current=current.parentId?db.locations.find(l=>l.id===current!.parentId):undefined;}
+  return true;
+ };
+ return <><button className="primary" onClick={()=>{setError('');setOpen(true);}}><Plus size={17}/>Add location</button>{open&&<CreationModal heading="Add location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
+  e.preventDefault();if(submitting.current)return;const d=new FormData(e.currentTarget);submitting.current=true;setBusy(true);setError('');
+  try {
+   const data:ActionData={name:String(d.get('name')).trim(),classification:String(d.get('classification')),areaId:String(d.get('area')||''),note:String(d.get('note')||'')};
+   if(assigned)Object.assign(data,{parentId:String(d.get('parentId')||''),kind:String(d.get('kind')||'Storage'),room:String(d.get('room')||'')});
+   if(await run('create_location',data))setOpen(false);else setError('Location not created. Check the workspace error and try again.');
+  } finally {submitting.current=false;setBusy(false);}
+ }}><div className="form-grid"><label>Location name<input required pattern=".*\S.*" maxLength={200} name="name" placeholder={assigned?'Toolbox A or TA-01':'Shooter Prototype'}/></label>
+ {assigned&&<><label>Parent location<select name="parentId"><option value="">Top-level location</option>{db.locations.filter(l=>normalParent(l.id)).map(l=><option key={l.id} value={l.id}>{locationPath(db.locations,l.id)}</option>)}</select></label><label>Location type<select name="kind">{['Storage','Side','Shelf','Bin','Drawer'].map(k=><option key={k}>{k}</option>)}</select></label><label>Area / Room<input name="room" maxLength={200} placeholder="Robotics Lab (inherited for child locations)"/></label></>}
+ <label>Classification<select name="classification" defaultValue={assigned?'permanent':'project'}>{(admin||assigned?['project','robot','temporary','permanent','other']:['project']).map(k=><option value={k} key={k}>{title(k)}</option>)}</select></label>
+ <label>Owner area<select name="area">{assigned&&<option value="">Team-wide</option>}{db.areas.filter(a=>admin||assigned||a.id===profile.primaryAreaId).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label><label className="full">Instructions<textarea name="note" maxLength={10000} rows={3}/></label></div>
+ {assigned&&<p className="muted">Add normal storage anywhere in the workspace. Editing, deleting and photo permissions are unchanged; travel locations use the trip workflow.</p>}
+ {error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>setOpen(false)}>Cancel</button><button className="primary" disabled={busy}>{busy?'Creating…':'Create location'}</button></div></form></CreationModal>}</>;
 }
 export function Travel({db,profile,run,go,tripId,refresh}:{db:Database;profile:UserProfile;run:RunAction;go:(path:string)=>void;tripId?:string;refresh:()=>Promise<void>}){
  const [tab,setTab]=useState('Manifest'),[ownership,setOwnership]=useState(''),[operation,setOperation]=useState<{row:Manifest;action:'pack'|'internal'|'return'|'resolve'}|null>(null);

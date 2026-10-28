@@ -4,6 +4,13 @@ on:
     branches: [4418-inventory]
     paths:
       - 'src/main.tsx'
+      - 'src/logistics.tsx'
+      - 'src/services/repository.ts'
+      - 'src/services/types.ts'
+      - 'supabase/migrations/**'
+      - 'tests/mock-supabase.mjs'
+      - 'tests/location-creation-security.test.mjs'
+      - 'tests/logistics-shared/**'
       - 'src/search.ts'
       - 'src/feedback.tsx'
       - 'src/style.css'
