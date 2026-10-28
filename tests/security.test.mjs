@@ -10,7 +10,7 @@ const asUser=(who,fn)=>db.transaction(async tx=>{await tx.exec('set local role a
 before(async()=>{
  await db.exec("create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;");
  for(const [role,id] of Object.entries(users))await db.query('insert into auth.users(id,email) values($1,$2)',[id,role+'@example.test']);
- for(const path of ['001_initial_schema.sql','002_rls_policies.sql','003_operations_and_seed.sql','20261021021658_student_item_creation.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+path,import.meta.url),'utf8'));
+ for(const path of ['001_initial_schema.sql','002_rls_policies.sql','003_operations_and_seed.sql','20261021021658_student_item_creation.sql','20261028020953_lead_item_creation.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+path,import.meta.url),'utf8'));
  for(const [role,id] of Object.entries(users).filter(([role])=>role!=='outsider'))await db.query('update public.profiles set role=$1,primary_area_id=$2,active=$3 where id=$4',[role==='inactive'?'student':role,role==='lead'?area:null,role!=='inactive',id]);
  await db.query('delete from public.profiles where id=$1',[users.outsider]);
  await asUser('mentor',async tx=>{
@@ -78,7 +78,12 @@ test('creation denies readonly, inactive, non-member and anonymous identities',a
  for(const who of ['readonly','inactive','outsider'])await assert.rejects(()=>asUser(who,tx=>tx.query("insert into public.inventory_items(name,area_id,category) values('Forbidden',$1,'Tools')",[area])),/cannot create|row.level|permission/);
  await assert.rejects(()=>db.transaction(async tx=>{await tx.exec('set local role anon');await tx.query("insert into public.inventory_items(name,area_id,category) values('Forbidden',$1,'Tools')",[area]);}),/permission/);
 });
-test('lead creation remains restricted to the assigned area',async()=>{
- await rollback('lead',tx=>tx.query("insert into public.inventory_items(name,area_id,category) values('Synthetic lead part',$1,'Tools')",[area]));
- await assert.rejects(()=>asUser('lead',tx=>tx.query("insert into public.inventory_items(name,area_id,category) values('Forbidden',$1,'Tools')",[other])),/cannot create|row.level/);
+test('lead can create in any area without expanding metadata or deletion permissions',async()=>{
+ for(const areaId of [area,other])await rollback('lead',async tx=>{
+  const {rows:[created]}=await tx.query("insert into public.inventory_items(name,area_id,category) values('Synthetic lead part',$1,'Tools') returning *",[areaId]);
+  assert.equal(created.created_by,users.lead);
+  const removed=await tx.query('delete from public.inventory_items where id=$1 returning id',[created.id]);
+  assert.equal(removed.rows.length,areaId===area?1:0);
+ });
+ await assert.rejects(()=>asUser('lead',tx=>tx.query("update public.inventory_items set name='Forbidden' where id=$1",[otherItem])),/metadata/);
 });

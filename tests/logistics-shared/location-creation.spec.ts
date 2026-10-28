@@ -8,19 +8,23 @@ for(const [role,width] of [['assigned',390],['programManager',1440],['projectMan
  await page.setViewportSize({width,height:900});await login(page,role);
  await expect(page.getByRole('button',{name:'Admin',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Add location',exact:true}).click();
- await expect(page.getByRole('combobox',{name:'Classification',exact:true})).toHaveValue('permanent');
- await expect(page.getByRole('combobox',{name:'Classification',exact:true}).locator('option')).toHaveCount(5);
- await expect(page.getByRole('combobox',{name:'Owner area',exact:true}).locator('option')).toHaveCount(11);
+ await expect(page.getByRole('combobox',{name:'Storage use',exact:true})).toHaveValue('permanent');
+ await expect(page.getByRole('combobox',{name:'Storage use',exact:true}).locator('option')).toHaveCount(5);
+ await expect(page.getByRole('combobox',{name:'Owner team area',exact:true}).locator('option')).toHaveCount(11);
  await expect(page.getByRole('combobox',{name:'Parent location',exact:true}).locator('option[value="44180000-0000-4000-8000-000000000099"]')).toHaveCount(0);
  const name=`Synthetic ${role} storage ${width}`;
- await page.getByLabel('Location name',{exact:true}).fill(name);await page.getByRole('combobox',{name:'Location type',exact:true}).selectOption('Drawer');
- await page.getByRole('combobox',{name:'Owner area',exact:true}).selectOption('44180000-0000-4000-8000-000000000002');
+ await page.getByLabel('Location name',{exact:true}).fill(name);await page.getByRole('combobox',{name:'Location type',exact:true}).selectOption(role==='assigned'?'Box':role==='programManager'?'Toolbox':'Closet');
+ await page.getByRole('combobox',{name:'Owner team area',exact:true}).selectOption('44180000-0000-4000-8000-000000000002');
  await page.getByLabel('Area / Room',{exact:true}).fill('Robotics Lab');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
  await page.screenshot({path:`test-results/assigned-lead-create-${role}-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Create location',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
  await page.getByRole('button',{name:new RegExp(name)}).click();await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
  await expect(page.getByLabel('Upload location photo')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Edit storage settings',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Rename location',exact:true}).click();
+ await page.getByLabel('New location name',{exact:true}).fill(name+' renamed');await page.getByRole('button',{name:'Save name',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('heading',{name:name+' renamed',exact:true})).toBeVisible();
  await page.goto('/#admin');await expect(page.getByRole('heading',{name:'Inventory data',exact:true})).toHaveCount(0);
 });
 for(const role of ['student','readonly','pendingLead'])test(`${role} has no location creation grant`,async({page})=>{

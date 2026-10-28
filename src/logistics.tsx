@@ -1,10 +1,11 @@
 import {useEffect,useState,useRef,type ReactNode} from 'react';
-import {ArrowRight,Camera,Plus,Package,Wrench,MapPin,BriefcaseBusiness,X} from 'lucide-react';
-import {locationPath,ownerships,type Database,type Item} from './data';
+import {ArrowRight,Camera,Plus,Package,Wrench,MapPin,BriefcaseBusiness,Pencil,X} from 'lucide-react';
+import {locationPath,locationKinds,ownerships,type Database,type Item,type Location} from './data';
 import {inventoryRepository as repository} from './services/repository';
 import {canCount,canEdit,isAdmin,type UserProfile} from './services/types';
 import {atLocation,activeTrip,title,tripStatuses,type InventoryAction,type ActionData,type Media,type Manifest} from './services/logistics-model';
 import {friendlyError} from './services/supabase';
+import {isStorageArea} from './team-areas';
 export type RunAction=(action:InventoryAction|'enable',data:ActionData)=>Promise<boolean>;
 const signed=new Map<string,{url:string;until:number}>();
 export function Photo({photo,compact=false,alt='',location=false,itemType}:{photo?:Media;compact?:boolean;alt?:string;location?:boolean;itemType?:string}){
@@ -15,7 +16,7 @@ export function Photo({photo,compact=false,alt='',location=false,itemType}:{phot
 }
 export function CreationModal({heading,close,children,busy=false}:{heading:string;close:()=>void;children:ReactNode;busy?:boolean}){
  const ref=useRef<HTMLElement>(null);
- useEffect(()=>{const previous=document.activeElement as HTMLElement|null;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';ref.current?.querySelector<HTMLInputElement>('input')?.focus();return()=>{document.body.style.overflow=overflow;previous?.focus();};},[]);
+ useEffect(()=>{const previous=document.activeElement as HTMLElement|null;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';(ref.current?.querySelector<HTMLElement>('input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')||ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();return()=>{document.body.style.overflow=overflow;previous?.focus();};},[]);
  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)close();}} onKeyDown={e=>{if(e.key==='Escape'&&!busy){e.preventDefault();close();}if(e.key==='Tab'){const nodes=Array.from(ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)')||[]);const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}}><section ref={ref} className="modal creation-modal" role="dialog" aria-modal="true" aria-label={heading}><div className="modal-heading"><h2>{heading}</h2><button type="button" disabled={busy} className="icon-button" aria-label={`Close ${heading.toLowerCase()}`} onClick={close}><X/></button></div>{children}</section></div>;
 }
 export function NewTrip({run}:{run:RunAction}){
@@ -41,42 +42,69 @@ export function ItemLocations({db,item,move,go,correct,verify}:{db:Database;item
  if(!db.logistics)return null;const current=db.items.find(i=>i.id===item.id)||item;
  return <section className="item-balances"><div className="panel-heading"><div><h2>Where they are</h2><p><b>{current.quantity} total tracked</b> · Target {current.target} overall</p><small>Expected {current.expectedQuantity??'not configured'} at home: {locationPath(db.locations,current.locationId)}</small></div>{move&&<button type="button" className="secondary" onClick={move}>Move</button>}</div>{db.logistics.balances.filter(b=>b.itemId===item.id&&(b.quantity>0||b.locationId===current.locationId)).map(b=>{const l=db.locations.find(l=>l.id===b.locationId);return <div className="balance-row" key={b.id}><button type="button" className="location-link" onClick={()=>go(`location/${b.locationId}`)}>{locationPath(db.locations,b.locationId)}</button><b>{b.quantity} here</b>{correct&&!l?.tripId&&<BalanceCorrection key={b.id+'-'+b.updatedAt} item={atLocation(db,current,b.locationId)} correct={correct} verify={verify}/>} {l?.tripId&&<button type="button" className="badge" onClick={()=>go(`trip/${l.tripId}`)}>Traveling · {db.logistics!.trips.find(t=>t.id===l.tripId)?.name}</button>}</div>})}<MovementHistory db={db} itemId={item.id}/></section>;
 }
-export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserProfile;run:RunAction}){
- const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const submitting=useRef(false);
- const [creationAccess,setCreationAccess]=useState<{userId:string|null;assignedLead:boolean}|null>(null);
+function useAssignedLocationAccess(profile:UserProfile){
+ const [access,setAccess]=useState<{userId:string|null;assignedLead:boolean}|null>(null);
  useEffect(()=>{
   let live=true,sequence=0;
-  const refresh=async()=>{const current=++sequence;const access=await repository.locationCreationContext();if(live&&current===sequence)setCreationAccess(access);};
-  setCreationAccess(null);
+  const refresh=async()=>{const current=++sequence;const next=await repository.locationCreationContext();if(live&&current===sequence)setAccess(next);};
+  setAccess(null);
   if(!profile.active||!['student','lead'].includes(profile.role))return;
   void refresh();const timer=setInterval(()=>void refresh(),30000),focus=()=>void refresh();window.addEventListener('focus',focus);
   return()=>{live=false;sequence++;clearInterval(timer);window.removeEventListener('focus',focus);};
  },[profile.id,profile.active,profile.role,profile.updatedAt]);
- const assigned=profile.active&&['student','lead'].includes(profile.role)&&creationAccess?.userId===profile.id&&creationAccess.assignedLead;
+ return profile.active&&['student','lead'].includes(profile.role)&&access?.userId===profile.id&&access.assignedLead;
+}
+function normalStorageLocation(db:Database,id:string){
+ const seen=new Set<string>();let current=db.locations.find(l=>l.id===id);
+ if(!current)return false;
+ while(current){
+  if(['44180000-0000-4000-8000-000000000099','local-unassigned'].includes(current.id)||seen.has(current.id)||current.active===false||current.tripId||['travel','checkout'].includes(current.classification||''))return false;
+  seen.add(current.id);const parentId:string|null|undefined=current.parentId;if(!parentId)return true;current=db.locations.find(l=>l.id===parentId);
+ }
+ return false;
+}
+export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserProfile;run:RunAction}){
+ const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');const submitting=useRef(false);
+ const assigned=useAssignedLocationAccess(profile),admin=isAdmin(profile),normal=admin||assigned;
  useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role]);
- const admin=isAdmin(profile),allowed=profile.active&&(admin||profile.role==='lead'||assigned);
- if(!db.logistics||!allowed)return null;
- const normalParent=(id:string)=>{
-  const seen=new Set<string>();let current=db.locations.find(l=>l.id===id);
-  if(!current||current.kind==='Drawer'||current.kind==='Bin')return false;
-  while(current){if(['44180000-0000-4000-8000-000000000099','local-unassigned'].includes(current.id)||seen.has(current.id)||current.active===false||current.tripId||['travel','checkout'].includes(current.classification||''))return false;seen.add(current.id);current=current.parentId?db.locations.find(l=>l.id===current!.parentId):undefined;}
-  return true;
- };
+ if(!db.logistics||!profile.active||(!admin&&profile.role!=='lead'&&!assigned))return null;
  return <><button className="primary" onClick={()=>{setError('');setOpen(true);}}><Plus size={17}/>Add location</button>{open&&<CreationModal heading="Add location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
   e.preventDefault();if(submitting.current)return;const d=new FormData(e.currentTarget);submitting.current=true;setBusy(true);setError('');
   try {
    const data:ActionData={name:String(d.get('name')).trim(),classification:String(d.get('classification')),areaId:String(d.get('area')||''),note:String(d.get('note')||'')};
-   if(assigned)Object.assign(data,{parentId:String(d.get('parentId')||''),kind:String(d.get('kind')||'Storage'),room:String(d.get('room')||'')});
+   if(normal)Object.assign(data,{parentId:String(d.get('parentId')||''),kind:String(d.get('kind')||'Storage'),room:String(d.get('room')||'')});
    if(await run('create_location',data))setOpen(false);else setError('Location not created. Check the workspace error and try again.');
   } finally {submitting.current=false;setBusy(false);}
- }}><div className="form-grid"><label>Location name<input required pattern=".*\S.*" maxLength={200} name="name" placeholder={assigned?'Toolbox A or TA-01':'Shooter Prototype'}/></label>
- {assigned&&<><label>Parent location<select name="parentId"><option value="">Top-level location</option>{db.locations.filter(l=>normalParent(l.id)).map(l=><option key={l.id} value={l.id}>{locationPath(db.locations,l.id)}</option>)}</select></label><label>Location type<select name="kind">{['Storage','Side','Shelf','Bin','Drawer'].map(k=><option key={k}>{k}</option>)}</select></label><label>Area / Room<input name="room" maxLength={200} placeholder="Robotics Lab (inherited for child locations)"/></label></>}
- <label>Classification<select name="classification" defaultValue={assigned?'permanent':'project'}>{(admin||assigned?['project','robot','temporary','permanent','other']:['project']).map(k=><option value={k} key={k}>{title(k)}</option>)}</select></label>
- <label>Owner area<select name="area">{assigned&&<option value="">Team-wide</option>}{db.areas.filter(a=>admin||assigned||a.id===profile.primaryAreaId).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label><label className="full">Instructions<textarea name="note" maxLength={10000} rows={3}/></label></div>
- {assigned&&<p className="muted">Add normal storage anywhere in the workspace. Editing, deleting and photo permissions are unchanged; travel locations use the trip workflow.</p>}
+ }}><div className="form-grid"><label>Location name<input required pattern=".*\S.*" maxLength={200} name="name" placeholder={normal?'Toolbox A or Storage Closet':'Shooter Prototype'}/></label>
+ {normal&&<><label>Parent location<select name="parentId"><option value="">Top-level location</option>{db.locations.filter(l=>l.kind!=='Drawer'&&l.kind!=='Bin'&&normalStorageLocation(db,l.id)).map(l=><option key={l.id} value={l.id}>{locationPath(db.locations,l.id)}</option>)}</select></label><label>Location type<select name="kind">{locationKinds.map(k=><option key={k}>{k}</option>)}</select></label><label>Area / Room<input name="room" maxLength={200} placeholder="Robotics Lab (inherited for child locations)"/></label></>}
+ <label>Storage use<select name="classification" defaultValue={normal?'permanent':'project'}>{(normal?['permanent','project','robot','temporary','other']:['project']).map(k=><option value={k} key={k}>{k==='permanent'?'Permanent storage':title(k)}</option>)}</select></label>
+ <label>Owner team area<select name="area">{normal&&<option value="">Team-wide</option>}{db.areas.filter(a=>a.active!==false&&!isStorageArea(a)&&(normal||a.id===profile.primaryAreaId)).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label><label className="full">Instructions<textarea name="note" maxLength={10000} rows={3}/></label></div>
+ {normal&&<p className="muted">Location type describes the space or container (such as a closet, toolbox or box). Owner team area identifies the responsible team—not its physical storage area.</p>}
  {error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>setOpen(false)}>Cancel</button><button className="primary" disabled={busy}>{busy?'Creating…':'Create location'}</button></div></form></CreationModal>}</>;
 }
+export function RenameLocationForm({db,location,profile,run}:{db:Database;location:Location;profile:UserProfile;run:RunAction}){
+ const assigned=useAssignedLocationAccess(profile),[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [draft,setDraft]=useState({name:'',updatedAt:''});const submitting=useRef(false),normal=normalStorageLocation(db,location.id);
+ useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role,location.id,normal]);
+ if(!db.logistics||!profile.active||(!isAdmin(profile)&&!assigned)||!normal)return null;
+ return <><button className="secondary" onClick={()=>{setDraft({name:location.name||location.bin||location.storage,updatedAt:location.updatedAt||''});setError('');setOpen(true);}}><Pencil size={16}/>Rename location</button>{open&&<CreationModal heading="Rename location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
+  e.preventDefault();if(submitting.current)return;submitting.current=true;setBusy(true);setError('');
+  try {if(await run('rename_location',{id:location.id,name:draft.name.trim(),updatedAt:draft.updatedAt}))setOpen(false);else setError('Location not renamed. If it changed, close and reopen Rename before trying again.');}
+  finally {submitting.current=false;setBusy(false);}
+ }}><label>New location name<input required pattern=".*\S.*" maxLength={200} value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label><p>This changes only the displayed name. Its contents, parent, type, team area and history stay in place.</p>{error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>setOpen(false)}>Cancel</button><button className="primary" disabled={busy}>{busy?'Saving…':'Save name'}</button></div></form></CreationModal>}</>;
+}
+export function LocationSettingsForm({db,location,profile,run}:{db:Database;location:Location;profile:UserProfile;run:RunAction}){
+ const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [draft,setDraft]=useState({kind:'Storage',classification:'permanent',updatedAt:''});const submitting=useRef(false),normal=normalStorageLocation(db,location.id);
+ useEffect(()=>{setOpen(false);setError('');},[profile.id,profile.active,profile.role,location.id,normal]);
+ if(!db.logistics||!isAdmin(profile)||!normal)return null;
+ return <><button className="secondary" onClick={()=>{setDraft({kind:location.kind||'Storage',classification:location.classification||'permanent',updatedAt:location.updatedAt||''});setError('');setOpen(true);}}>Edit storage settings</button>{open&&<CreationModal heading="Edit storage settings" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
+  e.preventDefault();if(submitting.current)return;submitting.current=true;setBusy(true);setError('');
+  try {if(await run('configure_location',{id:location.id,...draft}))setOpen(false);else setError('Storage settings not saved. If this location changed, close and reopen settings before trying again.');}
+  finally {submitting.current=false;setBusy(false);}
+ }}><div className="form-grid"><label>Location type<select value={draft.kind} onChange={e=>setDraft({...draft,kind:e.target.value})}>{locationKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label><label>Storage use<select value={draft.classification} onChange={e=>setDraft({...draft,classification:e.target.value})}>{['permanent','project','robot','temporary','other'].map(kind=><option key={kind} value={kind}>{kind==='permanent'?'Permanent storage':title(kind)}</option>)}</select></label></div><p>Change how this location is described without recreating it or moving its items. Its name, parent, child locations, counts and history stay in place.</p>{error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>setOpen(false)}>Cancel</button><button className="primary" disabled={busy}>{busy?'Saving…':'Save storage settings'}</button></div></form></CreationModal>}</>;
+}
+
 export function Travel({db,profile,run,go,tripId,refresh}:{db:Database;profile:UserProfile;run:RunAction;go:(path:string)=>void;tripId?:string;refresh:()=>Promise<void>}){
  const [tab,setTab]=useState('Manifest'),[ownership,setOwnership]=useState(''),[operation,setOperation]=useState<{row:Manifest;action:'pack'|'internal'|'return'|'resolve'}|null>(null);
  if(!db.logistics)return <section className="panel settings-panel"><h2>Travel & movement</h2><p>{repository.mode==='demo'?'Enable a local movement demo to try balances and trips. Existing counts are preserved.':'Travel tools are not available yet. Contact a mentor; inventory is still available.'}</p>{repository.mode==='demo'&&<button className="primary" onClick={()=>void run('enable',{})}>Enable movement demo</button>}</section>;

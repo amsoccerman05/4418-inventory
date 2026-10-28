@@ -8,7 +8,7 @@ export interface Manifest {ownership:string;id:string;tripId:string;itemId:strin
 export interface Movement {id:string;itemId:string;itemName:string;quantity:number;from:string;to:string;tripId:string;type:string;userId:string;note:string;createdAt:string}
 export interface Media {id:string;entityType:'items'|'locations';entityId:string;path:string;alt:string;updatedAt:string}
 export interface Logistics {balances:Balance[];trips:Trip[];manifest:Manifest[];movements:Movement[];media:Media[]}
-export type InventoryAction='move'|'adjust'|'create_trip'|'trip_status'|'approve'|'pack'|'internal'|'return'|'resolve'|'create_location';
+export type InventoryAction='move'|'adjust'|'create_trip'|'trip_status'|'approve'|'pack'|'internal'|'return'|'resolve'|'create_location'|'rename_location'|'configure_location';
 export type ActionData=Record<string,string|number|boolean|null>;
 export const title=(s:string)=>s.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
 export const balanceAt=(db:Database,itemId:string,locationId:string)=>db.logistics?.balances.find(b=>b.itemId===itemId&&b.locationId===locationId)?.quantity??0;

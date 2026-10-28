@@ -1,8 +1,8 @@
 import type {Logistics, LocationClass} from './services/logistics-model';
 import { createId } from './utils/id';
-export interface Area { id: string; name: string; lead: string; slug?: string }
-export const locationKinds = ['Storage', 'Side', 'Shelf', 'Bin', 'Drawer'] as const;
-export interface Location { classification?:LocationClass; areaId?:string; tripId?:string; active?:boolean; id: string; room: string; storage: string; bin: string; name?: string; parentId?: string | null; kind?: typeof locationKinds[number]; description?: string }
+export interface Area { active?:boolean; id: string; name: string; lead: string; slug?: string }
+export const locationKinds = ['Storage', 'Closet', 'Toolbox', 'Box', 'Side', 'Shelf', 'Bin', 'Drawer'] as const;
+export interface Location { updatedAt?:string; classification?:LocationClass; areaId?:string; tripId?:string; active?:boolean; id: string; room: string; storage: string; bin: string; name?: string; parentId?: string | null; kind?: typeof locationKinds[number]; description?: string }
 export const itemTypes = ['Part', 'Consumable', 'Raw Material', 'Tool', 'Asset'] as const;
 export const ownerships = ['Shared / School', 'FRC 4418', 'BEST'] as const;
 export interface Item { totalQuantity?:number; homeLocationId?:string; balanceLocationId?:string; assignedElsewhere?:number; id: string; name: string; areaId: string; category: string; quantity: number; unit: string; minimum: number; target: number; locationId: string; manufacturer: string; partNumber: string; vendor: string; url: string; cost: number; notes: string; updatedAt: string; lastVerified: string; updatedBy: string; orderStatus?: OrderState; trackingMode?: 'quantity' | 'individual'; itemType: typeof itemTypes[number]; ownership: typeof ownerships[number]; expectedQuantity: number | null; slot: string; lastVerifiedBy?:string; legacyUpdatedBy?:string }
