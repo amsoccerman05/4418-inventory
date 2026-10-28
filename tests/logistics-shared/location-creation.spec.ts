@@ -23,7 +23,9 @@ for(const [role,width] of [['assigned',390],['programManager',1440],['projectMan
  await expect(page.getByLabel('Upload location photo')).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Edit storage settings',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Rename location',exact:true}).click();
- await page.getByLabel('New location name',{exact:true}).fill(name+' renamed');await page.getByRole('button',{name:'Save name',exact:true}).click();
+ await page.getByLabel('New location name',{exact:true}).fill(name+' renamed');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);await page.screenshot({path:`test-results/assigned-lead-rename-${role}-${width}.png`,fullPage:true});
+ await page.getByRole('button',{name:'Save name',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('heading',{name:name+' renamed',exact:true})).toBeVisible();
  await page.goto('/#admin');await expect(page.getByRole('heading',{name:'Inventory data',exact:true})).toHaveCount(0);
 });
