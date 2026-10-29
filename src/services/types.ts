@@ -1,6 +1,6 @@
 import type {InventoryAction,ActionData,Media} from './logistics-model';
 import type { Database, Item } from '../data';
-export const userRoles=['readonly','student','lead','admin','mentor'] as const;
+export const userRoles=['readonly','student','lead','admin_lead','admin','mentor'] as const;
 export type UserRole=typeof userRoles[number];
 export interface UserProfile { id:string; displayName:string; email:string; role:UserRole; primaryAreaId:string|null; active:boolean; updatedAt?:string }
 export interface InventoryEvent { id:string; itemId:string|null; itemName:string; areaId:string|null; userId:string|null; eventType:string; quantityBefore:number|null; quantityAfter:number|null; changeAmount:number|null; notes:string; createdAt:string }
@@ -22,7 +22,8 @@ export interface InventoryRepository {
  importData(source:Database,current:Database):Promise<void>;
 }
 export const isAdmin=(p:UserProfile)=>p.active&&['admin','mentor'].includes(p.role);
-export const canCount=(p:UserProfile)=>p.active&&p.role!=='readonly';
-export const canEdit=(p:UserProfile,areaId:string)=>isAdmin(p)||(p.active&&p.role==='lead'&&p.primaryAreaId===areaId);
-export const canCreate=(p:UserProfile,_areaId:string)=>p.active&&['student','lead','admin','mentor'].includes(p.role);
+export const isLead=(p:UserProfile)=>p.active&&['lead','admin_lead'].includes(p.role);
+export const canCount=(p:UserProfile)=>p.active&&['student','lead','admin_lead','admin','mentor'].includes(p.role);
+export const canEdit=(p:UserProfile,areaId:string)=>isAdmin(p)||(isLead(p)&&p.primaryAreaId===areaId);
+export const canCreate=(p:UserProfile,_areaId:string)=>canCount(p);
 export const demoProfile:UserProfile={id:'local-demo',displayName:'Demo workspace',email:'',role:'mentor',primaryAreaId:null,active:true};

@@ -4,6 +4,11 @@ on:
     branches: [4418-inventory]
     paths:
       - 'package*.json'
+      - 'src/services/types.ts'
+      - 'supabase/migrations/*_inventory_admin_lead_compatibility.sql'
+      - 'tests/admin-lead-security.test.mjs'
+      - 'tests/logistics-shared/current-role-journey.spec.ts'
+      - 'tests/fixtures/**'
       - '.github/workflows/dependency-security.yml'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:

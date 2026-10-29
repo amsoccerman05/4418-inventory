@@ -2,7 +2,7 @@ import {useEffect,useState,useRef,type ReactNode} from 'react';
 import {ArrowRight,Camera,Plus,Package,Wrench,MapPin,BriefcaseBusiness,Pencil,X} from 'lucide-react';
 import {locationPath,locationKinds,ownerships,type Database,type Item,type Location} from './data';
 import {inventoryRepository as repository} from './services/repository';
-import {canCount,canEdit,isAdmin,type UserProfile} from './services/types';
+import {canCount,canEdit,isAdmin,isLead,type UserProfile} from './services/types';
 import {atLocation,activeTrip,title,tripStatuses,type InventoryAction,type ActionData,type Media,type Manifest} from './services/logistics-model';
 import {friendlyError} from './services/supabase';
 import {isStorageArea} from './team-areas';
@@ -48,11 +48,11 @@ function useAssignedLocationAccess(profile:UserProfile){
   let live=true,sequence=0;
   const refresh=async()=>{const current=++sequence;const next=await repository.locationCreationContext();if(live&&current===sequence)setAccess(next);};
   setAccess(null);
-  if(!profile.active||!['student','lead'].includes(profile.role))return;
+  if(!profile.active||!['student','lead','admin_lead'].includes(profile.role))return;
   void refresh();const timer=setInterval(()=>void refresh(),30000),focus=()=>void refresh();window.addEventListener('focus',focus);
   return()=>{live=false;sequence++;clearInterval(timer);window.removeEventListener('focus',focus);};
  },[profile.id,profile.active,profile.role,profile.updatedAt]);
- return profile.active&&['student','lead'].includes(profile.role)&&access?.userId===profile.id&&access.assignedLead;
+ return profile.active&&['student','lead','admin_lead'].includes(profile.role)&&access?.userId===profile.id&&access.assignedLead;
 }
 function normalStorageLocation(db:Database,id:string){
  const seen=new Set<string>();let current=db.locations.find(l=>l.id===id);
@@ -67,9 +67,9 @@ export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserPr
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');const submitting=useRef(false);
  const assigned=useAssignedLocationAccess(profile),admin=isAdmin(profile),normal=admin||assigned;
  const ownerAreas=db.areas.filter(a=>a.active!==false&&!isStorageArea(a)&&(normal||a.id===profile.primaryAreaId));
- const legacyArea=profile.role==='lead'&&ownerAreas.some(a=>a.id===profile.primaryAreaId)?profile.primaryAreaId:null;
+ const legacyArea=isLead(profile)&&ownerAreas.some(a=>a.id===profile.primaryAreaId)?profile.primaryAreaId:null;
  useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role,legacyArea]);
- if(!db.logistics||!profile.active||(!admin&&profile.role!=='lead'&&!assigned))return null;
+ if(!db.logistics||!profile.active||(!admin&&!isLead(profile)&&!assigned))return null;
  if(!normal&&!legacyArea)return <small className="location-access-help">To add a project location, ask a mentor to assign you an active team area.</small>;
  return <><button className="primary" onClick={()=>{setError('');setOpen(true);}}><Plus size={17}/>Add location</button>{open&&<CreationModal heading="Add location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
   e.preventDefault();if(submitting.current)return;const d=new FormData(e.currentTarget);submitting.current=true;setBusy(true);setError('');
@@ -111,7 +111,7 @@ export function LocationSettingsForm({db,location,profile,run}:{db:Database;loca
 export function Travel({db,profile,run,go,tripId,refresh}:{db:Database;profile:UserProfile;run:RunAction;go:(path:string)=>void;tripId?:string;refresh:()=>Promise<void>}){
  const [tab,setTab]=useState('Manifest'),[ownership,setOwnership]=useState(''),[operation,setOperation]=useState<{row:Manifest;action:'pack'|'internal'|'return'|'resolve'}|null>(null);
  if(!db.logistics)return <section className="panel settings-panel"><h2>Travel & movement</h2><p>{repository.mode==='demo'?'Enable a local movement demo to try balances and trips. Existing counts are preserved.':'Travel tools are not available yet. Contact a mentor; inventory is still available.'}</p>{repository.mode==='demo'&&<button className="primary" onClick={()=>void run('enable',{})}>Enable movement demo</button>}</section>;
- const g=db.logistics,trip=g.trips.find(t=>t.id===tripId);const admin=isAdmin(profile),manager=admin||profile.role==='lead';
+ const g=db.logistics,trip=g.trips.find(t=>t.id===tripId);const admin=isAdmin(profile),manager=admin||isLead(profile);
  if(!trip)return <>
   {!g.trips.length?<section className="panel travel-empty"><span className="travel-empty-icon"><BriefcaseBusiness size={32}/></span><h2>No trips yet</h2><p>Create a trip when the team is preparing for a regional, offseason event, or demo.</p>{admin?<NewTrip run={run}/>:<small>A mentor or admin can create the team’s next trip.</small>}</section>:['Active trips','Upcoming trips','Completed trips'].map((group,n)=>{const trips=g.trips.filter(t=>n===0?activeTrip(t)&&t.status!=='planning':n===1?t.status==='planning':!activeTrip(t));return trips.length>0&&<section className="travel-group" key={group}><h2>{group}</h2><div className="locations-grid">{trips.map(t=>{const m=g.manifest.filter(m=>m.tripId===t.id);const date=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'';return <button className="panel trip-card" key={t.id} onClick={()=>go(`trip/${t.id}`)}><span className={`badge ${activeTrip(t)?'good':''}`}>{title(t.status)}</span><h3>{t.name}</h3><small>{t.start?`${date(t.start)}${t.end?' – '+date(t.end):''}`:'Dates to be confirmed'}</small><div className="trip-card-counts"><span>{new Set(m.map(x=>x.itemId)).size} manifest items</span><span>{m.filter(x=>x.status==='packed'&&x.ownership==='Shared / School').reduce((n,x)=>n+x.quantity,0)} school-owned units traveling</span><span>{m.filter(x=>x.status==='approved').reduce((n,x)=>n+x.quantity,0)} units still need packing</span></div><span className="trip-card-link">Open trip <ArrowRight size={16}/></span></button>})}</div></section>})}
  </>;
