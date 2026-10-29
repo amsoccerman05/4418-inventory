@@ -29,6 +29,10 @@ test('canonical Inventory migration changes only pinned functions; Mentor admini
    await as(db,who,tx=>tx.query("update inventory_items set name='Own edit' where id=$1",[own]));
    await as(db,who,tx=>tx.query("update inventory_items set name='Cross edit',notes='All-area edit',area_id=$2 where id=$1",[cross,other]));
    await assert.rejects(()=>as(db,who,tx=>tx.query('update inventory_items set area_id=$2 where id=$1',[cross,area])),/Only a Mentor can reassign/);
+   let record=(await db.query('select * from inventory_items where id=$1',[cross])).rows[0];
+   await as(db,who,tx=>tx.query('select apply_inventory_changes($1)',[JSON.stringify({items:[{record:{...record,notes:'Allowed RPC metadata'},expected_updated_at:record.updated_at}]})]));
+   record=(await db.query('select * from inventory_items where id=$1',[cross])).rows[0];assert.equal(record.notes,'Allowed RPC metadata');
+   await assert.rejects(()=>as(db,who,tx=>tx.query('select apply_inventory_changes($1)',[JSON.stringify({items:[{record:{...record,area_id:area},expected_updated_at:record.updated_at}]})])),/Only a Mentor can reassign/);
    assert.deepEqual((await as(db,who,tx=>tx.query('delete from inventory_items where id=$1 returning id',[cross]))).rows,[]);
    const rights=(await as(db,who,tx=>tx.query("select private.can_manage_media('items',$1) own, private.can_manage_media('items',$2) other",[own,cross]))).rows[0];assert.deepEqual(rights,{own:true,other:true});
    assert.equal((await as(db,who,tx=>tx.query("select private.can_manage_media('locations',$1) allowed",[destination]))).rows[0].allowed,false);

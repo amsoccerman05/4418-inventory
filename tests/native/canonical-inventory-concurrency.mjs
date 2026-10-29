@@ -37,10 +37,17 @@ try{
  // Direct DELETE has no item UPDATE trigger: its VOLATILE policy helper pins the
  // current role/area. A profile revocation that has the lock first must win.
  const deleteId='20000000-0000-4000-8000-000000000502';sql(`${actor('mentor')}insert into inventory_items(id,name,area_id,category,quantity) values('${deleteId}','Synthetic delete authorization','${area}','Tools',0);`);
+ const deleteRow=JSON.parse(sql(`select to_jsonb(i) from inventory_items i where id='${deleteId}';`));
+ const rpcDeleteBefore=snapshot(),rpcDeleteGate=await gate(`select 1 from profiles where id='${ids.lead}' for update;`,'rpc-delete-demotion-gate');try{
+  const pending=asyncSQL(`${actor('lead')}select apply_inventory_changes(${quote(JSON.stringify({deleted_items:[{id:deleteId,updated_at:deleteRow.updated_at}]}))}::jsonb);`,'rpc-delete-demotion-write');await blocked('rpc-delete-demotion-write');await rpcDeleteGate.release(`update profiles set role='readonly' where id='${ids.lead}';`);await assert.rejects(()=>pending,/cannot delete/);assert.equal(snapshot(),rpcDeleteBefore);checks++;console.log('PASS rpc-delete-profile-committed-demotion-denied');
+ }finally{await rpcDeleteGate.release();restore();}
  for(const demote of [true,false]){const name='delete-profile-'+(demote?'demotion':'positive'),before=snapshot(),g=await gate(`select 1 from profiles where id='${ids.lead}' for update;`,name+'-gate');try{
   const pending=asyncSQL(`${actor('lead')}delete from inventory_items where id='${deleteId}' returning id;`,name+'-write');await blocked(name+'-write');await g.release(demote?`update profiles set role='readonly' where id='${ids.lead}';`:'');await pending;
   if(demote)assert.equal(snapshot(),before);else assert.equal(sql(`select count(*) from inventory_items where id='${deleteId}';`),'0');checks++;console.log('PASS '+name);
  }finally{await g.release();restore();}}
+ const itemGate=await gate(`select 1 from inventory_items where id='${item}' for update;`,'item-positive-gate');try{
+  const pending=asyncSQL(`${actor('student')}select apply_inventory_changes(${quote(JSON.stringify({...payload,items:[{record:{...row,name:'Allowed Student metadata'},expected_updated_at:row.updated_at}]}))}::jsonb);`,'item-positive-write');await blocked('item-positive-write');await itemGate.release();await pending;assert.equal(sql(`select name from inventory_items where id='${item}';`),'Allowed Student metadata');checks++;console.log('PASS student-item-row-current-authority-positive');
+ }finally{await itemGate.release();}
  // Photo RLS authorization pins the profile. If revocation already owns that
  // lock, it commits before authorization resumes and the upload must fail.
  const before=snapshot(),photoGate=await gate(`select 1 from profiles where id='${ids.student}' for update;`,'photo-demotion-gate');

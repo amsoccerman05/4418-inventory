@@ -15,6 +15,7 @@ do $canonical_guard$ begin
  if not exists(select 1 from pg_proc where oid=to_regprocedure('public.change_inventory_quantity(uuid,numeric,numeric,timestamp with time zone,boolean)') and md5(pg_get_functiondef(oid))='8d2541501195cd9a3fcc025b8045f14a' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres}') then raise exception 'Inventory function/ACL drift: public.change_inventory_quantity(uuid,numeric,numeric,timestamp with time zone,boolean)';end if;
  if not exists(select 1 from pg_proc where oid=to_regprocedure('public.verify_balance_location(uuid,jsonb)') and md5(pg_get_functiondef(oid))='4805c944675d74537c1e985e7e180a7f' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres}') then raise exception 'Inventory function/ACL drift: public.verify_balance_location(uuid,jsonb)';end if;
  if not exists(select 1 from pg_proc where oid=to_regprocedure('private.can_edit(uuid)') and md5(pg_get_functiondef(oid))='54c7476cc03f4f05cb24243396f04937' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres}') then raise exception 'Inventory function/ACL drift: private.can_edit(uuid)';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.apply_inventory_changes(jsonb)') and md5(pg_get_functiondef(oid))='2c0028aef4563d9252902ec9ed65ca98' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres}') then raise exception 'Inventory function/ACL drift: public.apply_inventory_changes(jsonb)';end if;
  if not exists(select 1 from pg_proc where oid=to_regprocedure('private.guard_item()') and md5(pg_get_functiondef(oid))='ca3f05eba027f8de555c5c4059a74330' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres}') then raise exception 'Inventory function/ACL drift: private.guard_item()';end if;
  if not exists(select 1 from pg_proc where oid=to_regprocedure('public.inventory_action(text,jsonb)') and md5(pg_get_functiondef(oid))='0a5eec387ddbd4bfe136695765e039cc' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres}') then raise exception 'Inventory function/ACL drift: public.inventory_action(text,jsonb)';end if;
  if not exists(select 1 from pg_proc where oid=to_regprocedure('private.create_assigned_lead_location(jsonb)') and md5(pg_get_functiondef(oid))='af27f00d25a04a0639d27f4e5ffa2205' and pg_get_userbyid(proowner)='postgres' and proacl::text is not distinct from '{postgres=X/postgres}') then raise exception 'Inventory function/ACL drift: private.create_assigned_lead_location(jsonb)';end if;
@@ -143,6 +144,54 @@ CREATE OR REPLACE FUNCTION private.can_edit(area uuid)
 AS $function$
  select private.can_count()
 $function$
+;
+CREATE OR REPLACE FUNCTION public.apply_inventory_changes(p_changes jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+declare r jsonb; payload jsonb; existing public.inventory_items; value public.inventory_items;
+begin
+ for r in select * from jsonb_array_elements(coalesce(p_changes->'areas','[]')) loop
+  payload:=r->'record';
+  insert into public.areas(id,slug,name,lead_name,active) values((payload->>'id')::uuid,payload->>'slug',payload->>'name',coalesce(payload->>'lead_name',''),true)
+  on conflict(id) do update set name=excluded.name,lead_name=excluded.lead_name,updated_at=clock_timestamp();
+ end loop;
+ for r in select * from jsonb_array_elements(coalesce(p_changes->'locations','[]')) loop
+  payload:=r->'record';
+  insert into public.locations(id,name,code,parent_id,location_type,description,room,storage,classification,area_id) values((payload->>'id')::uuid,payload->>'name',payload->>'code',(payload->>'parent_id')::uuid,payload->>'location_type',payload->>'description',coalesce(payload->>'room',''),coalesce(payload->>'storage',''),coalesce(payload->>'classification','permanent'),nullif(payload->>'area_id','')::uuid)
+  on conflict(id) do update set name=excluded.name,code=excluded.code,parent_id=excluded.parent_id,location_type=excluded.location_type,description=excluded.description,room=excluded.room,storage=excluded.storage,classification=excluded.classification,area_id=excluded.area_id;
+ end loop;
+ for r in select * from jsonb_array_elements(coalesce(p_changes->'categories','[]')) loop
+  insert into public.categories(name) values(r#>>'{}') on conflict do nothing;
+ end loop;
+ for r in select * from jsonb_array_elements(coalesce(p_changes->'items','[]')) loop
+  payload:=r->'record';
+  select * into existing from public.inventory_items where id=(payload->>'id')::uuid for update;
+  if found then
+   -- A row lock may have waited across a committed role downgrade. Do not
+   -- let RLS silently turn an intended save into a zero-row success response.
+   perform 1 from public.profiles where id=auth.uid() and active and role::text in ('student','lead','admin_lead','mentor');
+   if not found then raise exception 'You cannot change inventory' using errcode='42501';end if;
+   if r->>'expected_updated_at' is null or existing.updated_at<>(r->>'expected_updated_at')::timestamptz then raise exception 'An item changed on another device. Refresh and retry.' using errcode='40001';end if;
+   value:=jsonb_populate_record(existing,payload);
+   update public.inventory_items set name=value.name,item_type=value.item_type,ownership=value.ownership,area_id=value.area_id,category=value.category,quantity=value.quantity,expected_quantity=value.expected_quantity,minimum_quantity=value.minimum_quantity,target_quantity=value.target_quantity,unit=value.unit,location_id=value.location_id,slot_position=value.slot_position,manufacturer=value.manufacturer,manufacturer_part_number=value.manufacturer_part_number,vendor=value.vendor,vendor_url=value.vendor_url,approx_unit_cost=value.approx_unit_cost,notes=value.notes,last_verified_at=value.last_verified_at,legacy_updated_by=value.legacy_updated_by,order_status=value.order_status,tracking_mode=value.tracking_mode where id=existing.id;
+   if not found then raise exception 'You cannot change inventory' using errcode='42501';end if;
+  else
+   if r->>'expected_updated_at' is not null then raise exception 'An item was removed on another device. Refresh and retry.' using errcode='40001';end if;
+   value:=jsonb_populate_record(null::public.inventory_items,payload);
+   insert into public.inventory_items(id,name,item_type,ownership,area_id,category,quantity,expected_quantity,minimum_quantity,target_quantity,unit,location_id,slot_position,manufacturer,manufacturer_part_number,vendor,vendor_url,approx_unit_cost,notes,last_verified_at,legacy_updated_by,order_status,tracking_mode)
+   values(value.id,value.name,value.item_type,value.ownership,value.area_id,value.category,value.quantity,value.expected_quantity,value.minimum_quantity,value.target_quantity,value.unit,value.location_id,value.slot_position,value.manufacturer,value.manufacturer_part_number,value.vendor,value.vendor_url,value.approx_unit_cost,value.notes,value.last_verified_at,value.legacy_updated_by,value.order_status,value.tracking_mode);
+  end if;
+ end loop;
+ for r in select * from jsonb_array_elements(coalesce(p_changes->'deleted_items','[]')) loop
+  select * into existing from public.inventory_items where id=(r->>'id')::uuid for update;
+  if not found or r->>'updated_at' is null or existing.updated_at<>(r->>'updated_at')::timestamptz then raise exception 'An item changed on another device. Refresh and retry.' using errcode='40001';end if;
+  if not coalesce(private.can_delete_item(existing.area_id),false) then raise exception 'You cannot delete this item' using errcode='42501';end if;
+  delete from public.inventory_items where id=existing.id;
+  if not found then raise exception 'You cannot delete this item' using errcode='42501';end if;
+ end loop;
+end $function$
 ;
 CREATE OR REPLACE FUNCTION private.guard_item()
  RETURNS trigger
@@ -494,6 +543,7 @@ do $canonical_verify$ begin
  if md5(pg_get_functiondef('public.change_inventory_quantity(uuid,numeric,numeric,timestamp with time zone,boolean)'::regprocedure))<>'267269eb8d848d0f34ea928dbd58286e' then raise exception 'Inventory output mismatch: public.change_inventory_quantity(uuid,numeric,numeric,timestamp with time zone,boolean)';end if;
  if md5(pg_get_functiondef('public.verify_balance_location(uuid,jsonb)'::regprocedure))<>'0586174a7b772b581b6ca069010049b6' then raise exception 'Inventory output mismatch: public.verify_balance_location(uuid,jsonb)';end if;
  if md5(pg_get_functiondef('private.can_edit(uuid)'::regprocedure))<>'1a6504695c70b3f8c93bed851b02e566' then raise exception 'Inventory output mismatch: private.can_edit(uuid)';end if;
+ if md5(pg_get_functiondef('public.apply_inventory_changes(jsonb)'::regprocedure))<>'fc1bf8dc39a8ce5b442b8eda894f2e38' then raise exception 'Inventory output mismatch: public.apply_inventory_changes(jsonb)';end if;
  if md5(pg_get_functiondef('private.guard_item()'::regprocedure))<>'90078304127911b399ec11dab8f26c9d' then raise exception 'Inventory output mismatch: private.guard_item()';end if;
  if md5(pg_get_functiondef('public.inventory_action(text,jsonb)'::regprocedure))<>'7634718f80bf56d6a7b80cc4ff6b155e' then raise exception 'Inventory output mismatch: public.inventory_action(text,jsonb)';end if;
  if md5(pg_get_functiondef('private.create_assigned_lead_location(jsonb)'::regprocedure))<>'2faa51790ae6e41f7afaecba48100122' then raise exception 'Inventory output mismatch: private.create_assigned_lead_location(jsonb)';end if;
