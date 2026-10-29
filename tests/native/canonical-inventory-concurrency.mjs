@@ -23,6 +23,8 @@ try{
  sql(await adapterSql());sql(await migration('20261028170803_inventory_post_lock_authority.sql'));
  sql("update profiles set role='admin_lead' where role='admin';alter table profiles drop constraint profiles_role_check;alter table profiles add constraint profiles_role_check check(role in ('readonly','student','lead','admin_lead','mentor')); ");
  sql(await migration('20261029190425_inventory_canonical_roles.sql'));
+ // Keep the last-administrator safeguard active while testing another Mentor's revocation.
+ sql("insert into auth.users(id,email) values('00000000-0000-4000-8000-000000000901','native-backup-mentor@example.invalid');update profiles set role='mentor',active=true where id='00000000-0000-4000-8000-000000000901';");
  const item='20000000-0000-4000-8000-000000000501';sql(`${actor('mentor')}insert into inventory_items(id,name,area_id,category,quantity,location_id) values('${item}','Synthetic all-area item','${other}','Tools',6,'${home}');`);
  const row=JSON.parse(sql(`select to_jsonb(i) from inventory_items i where id='${item}';`)),payload={items:[{record:{...row,name:'Forbidden pending metadata'},expected_updated_at:row.updated_at}]};
  await denied('student-item-row-demotion',`select 1 from inventory_items where id='${item}' for update;`,`${actor('student')}select apply_inventory_changes(${quote(JSON.stringify(payload))}::jsonb);`,`update profiles set role='readonly' where id='${ids.student}';`);
