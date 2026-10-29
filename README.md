@@ -38,7 +38,7 @@ The app now supports private item/location photos, multi-location balances, atom
    where id = (select id from auth.users where email = 'YOUR_EMAIL');
    ```
 
-   After the reviewed Hub Team Management rollout, use **Team Hub → Team Management** to manage existing profiles, roles, areas, registration and positions. Inventory Admin links there. Invitations remain in the Supabase dashboard. The last active admin/mentor cannot be disabled or demoted through the application.
+   After the reviewed Hub Team Management rollout, use **Team Hub → Team Management** to manage existing profiles, roles, areas, registration and positions. Inventory Admin links there. Invitations remain in the Supabase dashboard. The last active Mentor cannot be disabled or demoted through the application.
 6. With Node.js 22+ installed, run `npm ci` and `npm run dev`. Restart Vite after changing environment values. Run `npm run build` to type-check and create `dist/`; `npm run preview` serves that production build.
 7. For GitHub Pages, add repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the latter may alternatively be an Actions secret). Select **Settings → Pages → GitHub Actions**. The included workflow builds and publishes on pushes to `main` or manual dispatch. Configure these variables before deployment; the deployment workflow fails if either is missing, preventing an accidental public demo deployment.
 
@@ -59,11 +59,15 @@ The database contains `profiles`, `areas`, `locations`, `categories`, `inventory
 | Role | Permissions |
 | --- | --- |
 | readonly | View, search and filter all team inventory, locations and restock. No writes or audits. |
-| student | Readonly access plus item creation, quantity corrections, item verification and drawer audits. Creating an item does not grant metadata editing, deletion or photo management. |
-| lead | Student access plus item metadata and minimum/expected/target changes in their assigned area. Can view all areas; initial Inventory and Restock filters use their assigned area. |
-| admin / mentor | Full inventory and configuration access, CSV, migration, explicit demo seed; shared member administration is in Team Hub. Mentor remains a distinct role. |
+| student | Add and edit item details/photos in any area; count, verify, move and use already-approved packing. No location creation or item deletion. Existing qualifying functional-position name-only rename remains available. |
+| lead | Student tools plus normal location creation anywhere and existing packing approval. Item deletion and location photos remain limited to their own primary area. |
+| admin_lead | Lead tools plus name-only location rename across areas. Not a suite administrator. |
+| mentor | Full Inventory configuration, CSV/import, trips and loss administration; shared member administration is in Team Hub. |
 
-All public application tables have RLS enabled and anonymous table access revoked. Policies derive roles and area assignments from the active database profile through narrowly scoped helpers in a private schema. Inventory triggers additionally guard columns, because row policies alone cannot distinguish a student's quantity edit from a metadata edit. Moving an item across areas requires permission for both its old and new area. Browser-supplied actor IDs and privileged signup metadata are never trusted. Events are written by database triggers in the same transaction as inventory changes; clients cannot insert, modify or delete history.
+These are the five canonical roles; Owner Admin is not a second Admin Lead choice. Hub's separately reviewed conversion handles the existing legacy account before this migration. Readonly and inactive status override retained positions. Location creation requires a valid active Lead/Admin Lead account, but no functional position or Attendance registration. Existing Auth confirmation, prior sign-in and non-banned checks remain for that route.
+
+All application tables have RLS and anonymous access restrictions. Existing item **area reassignment is Mentor-only**, even though other details/photos can be edited across areas; this prevents retagging an item into a Lead's own area to bypass deletion boundaries. Item identity, creator, history and structural location relationships remain guarded. Metadata/create/rename/settings writes recheck authority after business locks; photo and item-delete policy helpers serialize authority with profile changes. Referenced photo objects cannot be renamed or deleted behind the media reference. Events remain trigger-attributed and immutable.
+
 
 Quantity buttons use an atomic server-side delta, avoiding lost increments across devices. Typed absolute counts, metadata edits and Undo use the last seen `updated_at` to reject stale overwrites. Drawer verification checks membership and row versions and saves all verification records atomically. A stale drawer must be reviewed before retrying. Invalid writes roll back with their history; the UI only adopts saved values. Realtime subscriptions are cleaned up on unmount and reconnect; focus refresh and a 30-second fallback keep data usable during disconnects. Offline writes are not queued.
 
@@ -72,7 +76,7 @@ Policy references: [Supabase RLS](https://supabase.com/docs/guides/database/post
 ## Migrating V0 inventory
 
 1. Export a V0 CSV backup first. Keep the original browser storage intact.
-2. Open the configured shared app using the **same browser and origin** that holds the V0 inventory, then sign in as an admin/mentor.
+2. Open the configured shared app using the **same browser and origin** that holds the V0 inventory, then sign in as a Mentor.
 3. In Admin, choose **Preview local data**. Review the item, location and area counts, then **Confirm migration** and accept the explicit confirmation.
 4. The migration runs as one database transaction. Legacy string IDs are mapped deterministically to UUIDs; existing UUIDs remain unchanged. Area slugs match standard shared areas, and item/location parent references are remapped together. Existing shared IDs are retained without overwriting their edited values. Repeating the migration does not duplicate records. Local data remains as a backup.
 
@@ -84,7 +88,7 @@ A different origin cannot read the old browser's localStorage. Migrate on the ol
 - Area overview: area health, categories, and filtered inventory access.
 - Inventory: search stays visible, with area/category/location/status/item-type/ownership filters inside **Filters** (active selections remain applied while collapsed). Desktop keeps the table; phone-width results become stacked cards with photo, full storage path, quantity, status, and clear View details / Move actions. Clickable rows, immediate quantity controls, and item detail editing remain available. Item-name buttons provide keyboard access; quantity and location controls act independently. Each quantity adjustment shows a 10-second toast with the new count and Undo for the most recent adjustment. The timer pauses while hovered or focused. Undo never overwrites a subsequent item edit.
 - Restock: area and order-status filters, current, minimum, target, amount needed, and vendor information. **Export restock list** exports only the displayed rows. Existing items default to **Needs Order**; stored/imported **Ordered** and **Received** values are supported without adding purchasing actions. Zero-stock items always appear. Amount needed is clamped to zero when no higher target is configured.
-- Locations: account-level Leads without a usable assigned team area see assignment guidance instead of an unusable project-location form; existing assigned-position and admin/mentor creation rights are unchanged. Hierarchical storage, sides, shelves, bins, and drawers, with stable parent IDs and direct location routes. Parent pages show child cards and inventory in all descendant locations. Drawer pages open directly into audit mode; **View inventory** switches to the regular searchable, filterable quantity table. Audit mode always shows every directly assigned item, regardless of inventory filters.
+- Locations: Leads and Admin Leads can create normal locations in any area without a position assignment; Students cannot create locations. Admin Leads can rename normal locations without changing their structure. Hierarchical storage, sides, shelves, bins, and drawers, with stable parent IDs and direct location routes. Parent pages show child cards and inventory in all descendant locations. Drawer pages open directly into audit mode; **View inventory** switches to the regular searchable, filterable quantity table. Audit mode always shows every directly assigned item, regardless of inventory filters.
 - Admin: add areas, categories, and hierarchical locations; configure area leads; import/export CSV; add the toolbox demo without overwriting existing records; reset demo data.
 
 The item editor starts with name, area, category, quantity, unit and location. Type, ownership, stock thresholds, tool expectations, vendor fields and notes remain available in **More details**; collapsing it never resets values. Only item name, area, category, and quantity are required in V1; a home location is also required when logistics is enabled. An item is GOOD above its minimum, LOW at or below minimum with a positive quantity, and OUT at zero. Verification is due when missing or older than 90 days. Use **Verify quantity** after checking an item. It immediately saves the entered quantity and `lastVerified` timestamp; other edited fields still require **Save changes**. Existing `verifiedAt` values are migrated automatically, including older CSV imports.
@@ -176,13 +180,12 @@ If a change affects the notice, amend the canonical page alongside the release a
 Team-area icons are matched to area names, independent of database ordering.
 Open an item to change **Team area**, then **Save changes**. This changes the
 responsible team without changing the item's storage location, counts or balances.
-Cross-area reassignment remains restricted to mentors/admins; existing lead,
-student and readonly permissions are unchanged.
+Cross-area reassignment remains restricted to Mentors; everyday item editing does not include reassignment.
 
 Historical areas named **Closet** or **Storage Closet** are shown separately as
 **Needs team area**, with a review link and inventory/restock filters. They are
 not offered for new assignments. Existing records and their original area IDs
-remain intact until a mentor/admin explicitly selects another team area. Editing
+remain intact until a Mentor explicitly selects another team area. Editing
 unrelated fields does not reassign them. This release requires no migration,
 bulk data update, new permission, or privacy-notice change.
 
@@ -207,3 +210,5 @@ Initial read failures show a recoverable error instead of an empty result. Trans
 `tests/search.unit.test.mjs`, `tests/search-feedback.spec.ts` and `tests/shared/search-feedback.spec.ts` cover exact numeric tokens, punctuation, reordered words, phone/desktop empty states, local-fixture read errors, retry/reload retention and no inventory writes. The pull-request workflow also runs the existing full demo, shared and logistics suites, preserving the prior navigation/account and unsaved-form coverage.
 
 Admin Lead compatibility and verification: [role boundaries](docs/admin-lead-inventory.md).
+
+Current canonical role and revocation safeguards: [canonical Inventory permissions](docs/canonical-inventory-roles.md).

@@ -17,19 +17,20 @@ function compile(source,scope){
 }
 const profile=(role='lead',primaryAreaId=null,active=true)=>({id:'synthetic-user',role,primaryAreaId,active});
 const areas=[{id:'active',name:'Power'},{id:'inactive',name:'Software',active:false},{id:'storage',name:'Storage Closet'}];
-const admin=p=>p.active&&['admin','mentor'].includes(p.role);
+const admin=p=>p.active&&['mentor'].includes(p.role);
 function locationView(p,assigned=false,enabled=true){
  const source=definition(logistics,'ProjectLocationForm').replace('export ','');
  const Component=compile(source+'\nreturn ProjectLocationForm;',{React,useState:React.useState,useRef:React.useRef,useEffect:React.useEffect,useAssignedLocationAccess:()=>assigned,isAdmin:admin,isLead:p=>p.active&&['lead','admin_lead'].includes(p.role),isStorageArea:a=>a.id==='storage',Plus:()=>null});
  return renderToStaticMarkup(React.createElement(Component,{profile:p,db:{areas,logistics:enabled?{}:null},run:()=>{throw Error('Rendering cannot write');}}));
 }
-test('unassigned account Lead sees an explanation instead of an impossible location action',()=>{
- for(const role of ['lead','admin_lead'])for(const area of [null,'inactive','storage','missing']){const html=locationView(profile(role,area));assert.doesNotMatch(html,/<button/);assert.match(html,/ask a mentor to assign you an active team area/);}
+test('active Lead and Admin Lead can create normal locations without an area or position',()=>{
+ for(const role of ['lead','admin_lead'])for(const area of [null,'inactive','storage','missing'])assert.match(locationView(profile(role,area)),/Add location/);
 });
-test('legacy active-area, assigned-position and admin creation paths remain available',()=>{
+test('Lead creation needs no assignment, Student creation stays denied, Mentor creation remains available',()=>{
  assert.match(locationView(profile('lead','active')),/Add location/);
- for(const role of ['lead','admin_lead','student'])assert.match(locationView(profile(role),true),/Add location/);
- for(const role of ['admin','mentor'])assert.match(locationView(profile(role)),/Add location/);
+ for(const role of ['lead','admin_lead'])assert.match(locationView(profile(role),true),/Add location/);
+ assert.equal(locationView(profile('student'),true),'');
+ for(const role of ['mentor'])assert.match(locationView(profile(role)),/Add location/);
 });
 test('location hint does not invent access for students, readonly, inactive or legacy workspaces',()=>{
  for(const role of ['student','readonly'])assert.equal(locationView(profile(role)), '');
@@ -70,7 +71,7 @@ test('the active item dialog contains the error without replacing its draft or s
 
 test('quantity-only success dismisses through the saved callback, not explicit-close error cleanup',async()=>{
  const hookReact={...React,useRef:()=>({current:null}),useEffect:()=>{}};
- const Component=compile(definition(main,'ItemEditor')+'\nreturn ItemEditor;',{React:hookReact,useState:value=>[value,()=>{}],possibleDuplicates:()=>[],useUnsavedChanges:()=>({request:()=>{},confirmation:null,confirming:false}),canCreate:()=>false,canEdit:()=>false,canCount:()=>true,isAdmin:()=>false,isStorageArea:()=>false,teamAreaLabel:a=>a.name,sharedIdentity:()=>true,locationPath:()=>'',itemTypes:['Part'],ownerships:['FRC 4418'],X:()=>null,ArrowLeft:()=>null,Check:()=>null,PhotoPanel:()=>null,ItemLocations:()=>null,Activity:()=>null,inventoryRepository:{}});
+ const Component=compile(definition(main,'ItemEditor')+'\nreturn ItemEditor;',{React:hookReact,useState:value=>[value,()=>{}],possibleDuplicates:()=>[],useUnsavedChanges:()=>({request:()=>{},confirmation:null,confirming:false}),canCreate:()=>false,canEdit:()=>false,canDelete:()=>false,canCount:()=>true,isAdmin:()=>false,isStorageArea:()=>false,teamAreaLabel:a=>a.name,sharedIdentity:()=>true,locationPath:()=>'',itemTypes:['Part'],ownerships:['FRC 4418'],X:()=>null,ArrowLeft:()=>null,Check:()=>null,PhotoPanel:()=>null,ItemLocations:()=>null,Activity:()=>null,inventoryRepository:{}});
  const item={id:'draft',name:'Synthetic count',areaId:'active',category:'Parts',quantity:7,unit:'each',itemType:'Part',ownership:'FRC 4418',locationId:'',minimum:0,target:0,expectedQuantity:null,cost:0,notes:'',updatedAt:'2026-10-28T00:00:00Z'};
  const h=writeHarness({refreshFails:true});let saved=0,closed=0;
  const tree=Component({item,db:{items:[],areas,categories:['Parts'],locations:[]},isNew:false,profile:profile('student'),saveError:'',saveErrorVersion:0,busy:false,guard:{current:null},nameFor:()=>'',onQuantity:()=>h.fn(async()=>{}),onSaved:()=>saved++,onClose:()=>closed++});

@@ -21,7 +21,7 @@ test('student phone change is attributed and reaches a second device via realtim
   await expect(mentor.locator('.audit-row').filter({has:mentor.getByRole('button',{name:tool,exact:true})})).toContainText('Missing tools');
   await mentor.getByRole('button',{name:tool,exact:true}).click();await expect(mentor.getByText('Updated by Student',{exact:true})).toBeVisible();
   await expect(mentor.locator('.activity')).toContainText('4 → 3');await expect(mentor.locator('.activity')).toContainText('Student');
-  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Item name *')).toBeDisabled();await expect(page.getByLabel('Team area *')).toBeDisabled();await expect(page.getByLabel('Target quantity (overall)',{exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Item name *')).toBeEnabled();await expect(page.getByLabel('Team area *')).toBeDisabled();await expect(page.getByLabel('Target quantity (overall)',{exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Verify quantity',exact:true}).click();await expect(page.getByRole('dialog').getByRole('status')).toContainText('verified and saved');
   await mentor.getByRole('button',{name:'Verify quantity',exact:true}).click();await expect(mentor.getByRole('dialog').getByRole('status')).toContainText('Could not verify quantity');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -33,14 +33,14 @@ test('readonly sees all inventory but cannot edit or audit; admin route is prote
  await expect(page.getByRole('button',{name:'Add item',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Current quantity *',{exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Verify quantity',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.goto(`/#location/${drawer}`);await expect(page.getByRole('button',{name:'Drawer audit',exact:true})).toHaveCount(0);
- await page.goto('/#admin');await expect(page.getByText('Admin access is restricted to admins and mentors.')).toBeVisible();await expect(page.getByRole('heading',{name:'Inventory data'})).toHaveCount(0);
+ await page.goto('/#admin');await expect(page.getByText('Admin access is restricted to mentors.')).toBeVisible();await expect(page.getByRole('heading',{name:'Inventory data'})).toHaveCount(0);
 });
 
-test('lead starts in assigned area and only edits its metadata',async({page})=>{
+test('lead starts in assigned area and edits metadata everywhere without reassigning or deleting cross-area items',async({page})=>{
  await signIn(page,'lead');await expect(page.getByText('Fabrication Lead',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Inventory',exact:true}).click();await expect(page.getByLabel('Filter by area')).toHaveValue('44180000-0000-4000-8000-000000000001');
  await page.getByRole('button',{name:tool,exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeEnabled();await expect(page.getByLabel('Team area *').locator('option')).toHaveCount(1);await page.getByRole('button',{name:'Cancel',exact:true}).click();
- await page.locator('summary').filter({hasText:/Filters/}).click();await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Power tool',exact:true}).click();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeDisabled();await expect(page.getByLabel('Current quantity *',{exact:true})).toBeEnabled();
+ await page.locator('summary').filter({hasText:/Filters/}).click();await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.getByRole('button',{name:'Power tool',exact:true}).click();await expect(page.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);await expect(page.getByLabel('Team area *')).toBeDisabled();await expect(page.getByLabel('Expected quantity',{exact:true})).toBeEnabled();await expect(page.getByLabel('Current quantity *',{exact:true})).toBeEnabled();
 });
 
 test('failed quantity RPC leaves saved count unchanged',async({page})=>{
@@ -100,7 +100,7 @@ test('mentor can change team area without changing item location or quantity',as
  await expect(page.getByLabel('Current quantity *',{exact:true})).toHaveValue(quantity);
 });
 
-test('student adds an item, reloads it, and retains no metadata or delete permission',async({page})=>{
+test('student adds an item, reloads and edits it but cannot reassign or delete it',async({page})=>{
  await signIn(page,'student');await page.goto('/#inventory');
  await page.getByRole('button',{name:'Add item',exact:true}).click();
  await page.getByLabel('Item name *').fill('Synthetic student creation');
@@ -109,8 +109,8 @@ test('student adds an item, reloads it, and retains no metadata or delete permis
  await page.getByRole('dialog').getByRole('button',{name:'Add item',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByText('Item added.',{exact:true})).toBeVisible();
  await page.reload();await page.getByRole('button',{name:'Synthetic student creation',exact:true}).click();
- await expect(page.getByLabel('Item name *')).toBeDisabled();await expect(page.getByLabel('Team area *')).toBeDisabled();
+ await expect(page.getByLabel('Item name *')).toBeEnabled();await expect(page.getByLabel('Team area *')).toBeDisabled();
  await expect(page.getByLabel('Team area *').locator('option:checked')).toHaveText('Software');
  await expect(page.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Save changes',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Save changes',exact:true})).toBeVisible();
 });

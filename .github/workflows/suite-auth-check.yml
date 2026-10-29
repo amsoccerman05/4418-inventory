@@ -44,6 +44,11 @@ jobs:
       - run: npm run build
       - run: npm run test:security
       - run: npm run test:unit
+      - name: Native canonical Inventory authorization
+        run: |
+          PG_BIN="$(find /usr/lib/postgresql -path '*/bin/postgres' -type f -printf '%h\n' | sort -V | tail -1)"
+          test -n "$PG_BIN" || { echo 'Installed PostgreSQL server binary required'; exit 1; }
+          INVENTORY_ROLE_PG_BIN="$PG_BIN" node tests/native/canonical-inventory-concurrency.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run test:shared
       - run: npm run test:logistics
