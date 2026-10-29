@@ -147,7 +147,7 @@ for (const width of [390, 1440]) {
     await page.getByRole('button', {name: 'Browse inventory', exact: true}).click();
     await expect(page).toHaveURL(/#inventory$/);
     await page.goto('/#admin');
-    await expect(page.getByText('Admin access is restricted to admins and mentors.', {exact: true})).toBeVisible();
+    await expect(page.getByText('Admin access is restricted to mentors.', {exact: true})).toBeVisible();
     await expect(page.getByRole('heading', {name: 'Inventory data', exact: true})).toHaveCount(0);
     await page.getByRole('button', {name: 'Browse inventory', exact: true}).click();
     await expect(page).toHaveURL(/#inventory$/);
