@@ -4,7 +4,7 @@ async function login(page:Page,role:string){
  const session=await response.json();await page.addInitScript(session=>localStorage.setItem('sb-127-auth-token',JSON.stringify(session)),session);await page.goto('/#locations');
  return session;
 }
-for(const [role,width] of [['assigned',390],['programManager',1440],['projectManager',390]] as const)test(`${role} creates storage anywhere at ${width}px without admin or edit privileges`,async({page})=>{
+for(const [role,width] of [['leadUnassigned',390],['adminLeadUnassigned',1440],['adminLead',390]] as const)test(`${role} creates storage anywhere at ${width}px without suite administration or storage settings`,async({page})=>{
  await page.setViewportSize({width,height:900});await login(page,role);
  await expect(page.getByRole('button',{name:'Admin',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Add location',exact:true}).click();
@@ -13,7 +13,7 @@ for(const [role,width] of [['assigned',390],['programManager',1440],['projectMan
  await expect(page.getByRole('combobox',{name:'Owner team area',exact:true}).locator('option')).toHaveCount(11);
  await expect(page.getByRole('combobox',{name:'Parent location',exact:true}).locator('option[value="44180000-0000-4000-8000-000000000099"]')).toHaveCount(0);
  const name=`Synthetic ${role} storage ${width}`;
- await page.getByLabel('Location name',{exact:true}).fill(name);await page.getByRole('combobox',{name:'Location type',exact:true}).selectOption(role==='assigned'?'Box':role==='programManager'?'Toolbox':'Closet');
+ await page.getByLabel('Location name',{exact:true}).fill(name);await page.getByRole('combobox',{name:'Location type',exact:true}).selectOption(role==='leadUnassigned'?'Box':role==='adminLeadUnassigned'?'Toolbox':'Closet');
  await page.getByRole('combobox',{name:'Owner team area',exact:true}).selectOption('44180000-0000-4000-8000-000000000002');
  await page.getByLabel('Area / Room',{exact:true}).fill('Robotics Lab');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -22,28 +22,29 @@ for(const [role,width] of [['assigned',390],['programManager',1440],['projectMan
  await page.getByRole('button',{name:new RegExp(name)}).click();await expect(page.getByRole('heading',{name,exact:true})).toBeVisible();
  await expect(page.getByLabel('Upload location photo')).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Edit storage settings',exact:true})).toHaveCount(0);
+ if(role==='leadUnassigned'){await expect(page.getByRole('button',{name:'Rename location',exact:true})).toHaveCount(0);}else{
  await page.getByRole('button',{name:'Rename location',exact:true}).click();
  await page.getByLabel('New location name',{exact:true}).fill(name+' renamed');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);await page.screenshot({path:`test-results/assigned-lead-rename-${role}-${width}.png`,fullPage:true});
  await page.getByRole('button',{name:'Save name',exact:true}).click();
- await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('heading',{name:name+' renamed',exact:true})).toBeVisible();
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('heading',{name:name+' renamed',exact:true})).toBeVisible();}
  await page.goto('/#admin');await expect(page.getByRole('heading',{name:'Inventory data',exact:true})).toHaveCount(0);
 });
-for(const role of ['student','readonly','pendingLead'])test(`${role} has no location creation grant`,async({page})=>{
+for(const role of ['student','assigned','programManager','projectManager','readonly','pendingLead'])test(`${role} has no location creation grant`,async({page})=>{
  await login(page,role);await expect(page.getByRole('heading',{name:'A place for every part.',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);
 });
-test('assignment capability failure closes the new creation UI and cannot enable other students',async({page})=>{
- await login(page,'assigned');await page.getByRole('button',{name:'Add location',exact:true}).click();
- await page.route('**/rest/v1/rpc/inventory_location_creation_context',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({user_id:'00000000-0000-4000-8000-000000000006',assigned_lead:false})}));
- await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);
- await page.route('**/rest/v1/rpc/inventory_location_creation_context',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Unavailable'})}));
- await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);
- await page.unroute('**/rest/v1/rpc/inventory_location_creation_context');await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- await expect(page.getByRole('button',{name:'Add location',exact:true})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);
+test('a Lead role downgrade closes the location form and cannot send a write',async({page})=>{
+ await login(page,'leadUnassigned');await page.getByRole('button',{name:'Add location',exact:true}).click();
+ await page.getByLabel('Location name',{exact:true}).fill('Do not create after role removal');
+ let writes=0;page.on('request',request=>{if(request.url().endsWith('/rpc/inventory_action'))writes++;});
+ await page.route('**/rest/v1/profiles?*',async route=>{const response=await route.fetch();const rows=await response.json();await route.fulfill({response,json:rows.map((row:{id:string;role:string})=>row.id==='00000000-0000-4000-8000-000000000010'?{...row,role:'student'}:row)});});
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);expect(writes).toBe(0);
+ await page.unroute('**/rest/v1/profiles?*');await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('button',{name:'Add location',exact:true})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);expect(writes).toBe(0);
 });
 test('cancel, close, navigation and repeated submit do not create duplicates',async({page})=>{
- await login(page,'assigned');const open=()=>page.getByRole('button',{name:'Add location',exact:true}).click();
+ await login(page,'leadUnassigned');const open=()=>page.getByRole('button',{name:'Add location',exact:true}).click();
  let writes=0;page.on('request',request=>{if(request.url().endsWith('/rpc/inventory_action'))writes++;});
  await open();await page.getByLabel('Location name',{exact:true}).fill('Discard this');await page.getByRole('button',{name:'Cancel',exact:true}).click();
  await open();await expect(page.getByLabel('Location name',{exact:true})).toHaveValue('');await page.getByRole('button',{name:'Close add location',exact:true}).click();
@@ -55,32 +56,38 @@ test('cancel, close, navigation and repeated submit do not create duplicates',as
  await expect(page.getByRole('dialog')).toHaveCount(0);expect(writes).toBe(1);
 });
 
-for(const width of [390,1440])for(const role of ['leadUnassigned','leadStorage','leadInactiveArea'])test(`${role} sees assignment help, not an unusable location form at ${width}px`,async({page})=>{
+for(const width of [390,1440])for(const role of ['leadUnassigned','leadStorage','leadInactiveArea'])test(`${role} creates normal storage without an assigned active area at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});await login(page,role);
  await expect(page.getByRole('heading',{name:'A place for every part.',exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);
- await expect(page.getByText('To add a project location, ask a mentor to assign you an active team area.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Add item',exact:true})).toBeEnabled();
- expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
- if(role==='leadUnassigned')await page.screenshot({path:`test-results/location-assignment-guidance-${width}.png`,fullPage:true,animations:'disabled'});
-});
-test('account Lead with an active team area retains the existing project-only route',async({page})=>{
- await login(page,'lead');await page.getByRole('button',{name:'Add location',exact:true}).click();
+ await page.getByRole('button',{name:'Add location',exact:true}).click();
  const form=page.getByRole('dialog',{name:'Add location',exact:true});
- await expect(form.getByRole('combobox',{name:'Storage use',exact:true}).locator('option')).toHaveCount(1);
- await expect(form.getByRole('combobox',{name:'Owner team area',exact:true}).locator('option')).toHaveCount(1);
- await expect(form.getByRole('combobox',{name:'Owner team area',exact:true})).toHaveValue('44180000-0000-4000-8000-000000000001');
- await expect(form.getByRole('combobox',{name:'Parent location',exact:true})).toHaveCount(0);
- await form.getByLabel('Location name',{exact:true}).fill('Synthetic existing Lead project');
+ await expect(form.getByRole('combobox',{name:'Storage use',exact:true}).locator('option')).toHaveCount(5);
+ await expect(form.getByRole('combobox',{name:'Owner team area',exact:true}).locator('option')).toHaveCount(11);
+ await form.getByRole('combobox',{name:'Owner team area',exact:true}).selectOption('44180000-0000-4000-8000-000000000002');
+ await form.getByLabel('Location name',{exact:true}).fill(`Synthetic ${role} all-area storage ${width}`);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+ if(role==='leadUnassigned')await page.screenshot({path:`test-results/location-unassigned-lead-${width}.png`,fullPage:true,animations:'disabled'});
  await form.getByRole('button',{name:'Create location',exact:true}).click();await expect(form).toHaveCount(0);
 });
-test('losing the primary area closes the legacy form without submitting it',async({page})=>{
+test('account Lead with a primary area can create storage in another area without gaining rename',async({page})=>{
  await login(page,'lead');await page.getByRole('button',{name:'Add location',exact:true}).click();
- await page.getByLabel('Location name',{exact:true}).fill('Do not submit after area removal');
+ const form=page.getByRole('dialog',{name:'Add location',exact:true});
+ await expect(form.getByRole('combobox',{name:'Storage use',exact:true}).locator('option')).toHaveCount(5);
+ await expect(form.getByRole('combobox',{name:'Owner team area',exact:true}).locator('option')).toHaveCount(11);
+ await form.getByRole('combobox',{name:'Owner team area',exact:true}).selectOption('44180000-0000-4000-8000-000000000002');
+ await expect(form.getByRole('combobox',{name:'Parent location',exact:true})).toBeVisible();
+ await form.getByLabel('Location name',{exact:true}).fill('Synthetic cross-area Lead storage');
+ await form.getByRole('button',{name:'Create location',exact:true}).click();await expect(form).toHaveCount(0);
+ await page.getByRole('button',{name:/Synthetic cross-area Lead storage/}).click();await expect(page.getByRole('button',{name:'Rename location',exact:true})).toHaveCount(0);await expect(page.getByLabel('Upload location photo')).toHaveCount(0);
+});
+test('losing active status closes a location form without submitting it',async({page})=>{
+ await login(page,'lead');await page.getByRole('button',{name:'Add location',exact:true}).click();
+ await page.getByLabel('Location name',{exact:true}).fill('Do not submit after account deactivation');
  let writes=0;page.on('request',request=>{if(request.url().endsWith('/rpc/inventory_action'))writes++;});
  await page.route('**/rest/v1/profiles?*',async route=>{
   const response=await route.fetch();const rows=await response.json();
-  await route.fulfill({response,json:rows.map((row:{id:string;primary_area_id:string|null})=>row.id==='00000000-0000-4000-8000-000000000003'?{...row,primary_area_id:null}:row)});
+  await route.fulfill({response,json:rows.map((row:{id:string;active:boolean})=>row.id==='00000000-0000-4000-8000-000000000003'?{...row,active:false}:row)});
  });
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);expect(writes).toBe(0);

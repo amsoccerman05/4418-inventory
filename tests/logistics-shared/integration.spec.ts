@@ -17,6 +17,13 @@ test('private photo upload, signed rendering, replacement and deletion use repos
  await page.goto('/#inventory');await page.getByRole('button',{name:'5/32" Allen wrench',exact:true}).click();
  await page.getByRole('button',{name:'Delete photo',exact:true}).click();await expect(page.locator('.photo-panel img')).toHaveCount(0);
 });
-test('student sees balance controls and cannot manage photos or create trips',async({page})=>{
- await login(page,'student');await page.goto('/#inventory');await page.getByRole('button',{name:'5/32" Allen wrench',exact:true}).click();await expect(page.getByLabel('Upload item photo')).toHaveCount(0);await expect(page.getByRole('button',{name:'Save count'}).first()).toBeEnabled();await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.goto('/#travel');await expect(page.getByRole('button',{name:'Create trip',exact:true})).toHaveCount(0);
+test('Student edits cross-area item metadata and photos but cannot delete items, create locations or manage trips',async({page})=>{
+ await login(page,'student');await page.goto('/#inventory');await page.getByRole('button',{name:'Power tool',exact:true}).click();const dialog=page.getByRole('dialog');
+ await expect(dialog.getByLabel('Item name *',{exact:true})).toBeEnabled();await expect(dialog.getByLabel('Team area *',{exact:true})).toBeDisabled();await expect(dialog.getByRole('button',{name:'Delete item',exact:true})).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Save count'}).first()).toBeEnabled();
+ await dialog.getByLabel('Item name *',{exact:true}).fill('Power tool — Student edited');await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await expect(dialog).toHaveCount(0);await page.getByRole('button',{name:'Power tool — Student edited',exact:true}).click();
+ const png=Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=2;c.height=2;return c.toDataURL('image/png').split(',')[1];}),'base64');
+ await dialog.getByLabel('Photo description').fill('Student cross-area reference');await dialog.getByLabel('Upload item photo').setInputFiles({name:'student-reference.png',mimeType:'image/png',buffer:png});await expect(dialog.getByAltText('Student cross-area reference')).toBeVisible();
+ await dialog.getByRole('button',{name:'Delete photo',exact:true}).click();await expect(dialog.locator('.photo-panel img')).toHaveCount(0);await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.goto('/#locations');await expect(page.getByRole('button',{name:'Add location',exact:true})).toHaveCount(0);await page.goto('/#location/10000000-0000-4000-8000-000000000001');await expect(page.getByLabel('Upload location photo')).toHaveCount(0);
+ await page.goto('/#travel');await expect(page.getByRole('button',{name:'Create trip',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'New trip',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Admin',exact:true})).toHaveCount(0);
 });

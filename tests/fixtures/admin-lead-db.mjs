@@ -8,8 +8,9 @@ export const home='10000000-0000-4000-8000-000000000101',destination='10000000-0
 // Test-only schema prerequisite. The actual central Hub migration owns the
 // production profile CHECK and management/position guard; integration is separate.
 export async function allowRole(db){await db.exec("alter table profiles drop constraint profiles_role_check;alter table profiles add constraint profiles_role_check check(role in ('readonly','student','lead','admin_lead','admin','mentor'));");}
-export async function createRoleDb(){
- const db=new PGlite();await db.exec(`create role anon;create role authenticated;create schema auth;
+export const createRoleDb=()=>setupRoleDb(new PGlite());
+export async function setupRoleDb(db){
+ await db.exec(`create role anon;create role authenticated;create schema auth;
  create table auth.users(id uuid primary key,email text,raw_user_meta_data jsonb default '{}',last_sign_in_at timestamptz default now(),email_confirmed_at timestamptz default now(),banned_until timestamptz);
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;

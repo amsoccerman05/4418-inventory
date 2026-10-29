@@ -16,8 +16,9 @@ async function createEditorFixture(page:Page,name:string){
  const record={...template,id:crypto.randomUUID(),name,quantity:4,location_id:null,notes:''};
  const created=await page.request.post('http://127.0.0.1:54329/rest/v1/rpc/apply_inventory_changes',{headers,data:{p_changes:{items:[{record,expected_updated_at:null}]}}});expect(created.ok(),await created.text()).toBe(true);
 }
-for(const width of [390,1440])for(const action of ['Add item','Save changes','Save quantity'] as const)test(`${action} failure is in the dialog, retains the draft, and retries without duplicate writes at ${width}px`,async({page})=>{
+for(const width of [390,1440])for(const action of ['Add item','Save changes','Student changes'] as const)test(`${action} failure is in the dialog, retains the draft, and retries without duplicate writes at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900});
+ const button=action==='Add item'?'Add item':'Save changes';
  const name=`Synthetic retry ${action} ${width}`,tool=`Synthetic recovery tool ${action} ${width}`;
  if(action!=='Add item')await createEditorFixture(page,tool);
  await login(page,action==='Save changes'?'mentor':'student');
@@ -34,18 +35,18 @@ for(const width of [390,1440])for(const action of ['Add item','Save changes','Sa
   if(reject)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Synthetic item write unavailable'})});
   else{await new Promise(resolve=>setTimeout(resolve,150));await route.continue();}
  });
- await dialog.getByRole('button',{name:action,exact:true}).click();
+ await dialog.getByRole('button',{name:button,exact:true}).click();
  await expect(dialog.getByRole('alert')).toContainText('Synthetic item write unavailable');await expect(dialog.getByRole('alert')).toBeFocused();
- await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport({ratio:1});await expect(dialog.getByRole('button',{name:action,exact:true})).toBeInViewport({ratio:1});
+ await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport({ratio:1});await expect(dialog.getByRole('button',{name:button,exact:true})).toBeInViewport({ratio:1});
  await expect(count).toHaveValue(quantity);if(action==='Add item')await expect(dialog.getByLabel('Item name *',{exact:true})).toHaveValue(name);
  if(action==='Save changes')await expect(dialog.getByLabel('Notes',{exact:true})).toHaveValue(name);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
  await page.screenshot({path:`test-results/item-save-error-${action.toLowerCase().replaceAll(' ','-')}-${width}.png`,fullPage:true,animations:'disabled'});
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'Keep editing',exact:true}).click();
  await expect(count).toHaveValue(quantity);
- await dialog.getByRole('button',{name:action,exact:true}).click();
+ await dialog.getByRole('button',{name:button,exact:true}).click();
  await expect(dialog.getByRole('alert')).toContainText('Synthetic item write unavailable');await expect(dialog.getByRole('alert')).toBeFocused();
- await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport({ratio:1});await expect(dialog.getByRole('button',{name:action,exact:true})).toBeInViewport({ratio:1});
+ await expect(dialog.getByRole('button',{name:'Cancel',exact:true})).toBeInViewport({ratio:1});await expect(dialog.getByRole('button',{name:button,exact:true})).toBeInViewport({ratio:1});
  reject=false;
  await dialog.locator('form').evaluate(form=>{(form as HTMLFormElement).requestSubmit();(form as HTMLFormElement).requestSubmit();});
  await expect(dialog).toHaveCount(0);expect(writes).toBe(3);await expect(page.getByRole('alert')).toHaveCount(0);
@@ -64,12 +65,12 @@ test('discarding a failed new item clears its error before another form opens',a
  await expect(page.getByRole('dialog').getByRole('alert')).toHaveCount(0);await expect(page.getByLabel('Item name *',{exact:true})).toHaveValue('');
 });
 
-test('successful quantity save with a failed refresh keeps the do-not-submit-again message after dismissal',async({page})=>{
+test('successful Student edit with a failed refresh keeps the do-not-submit-again message after dismissal',async({page})=>{
  const tool='Synthetic confirmed-save refresh tool';await createEditorFixture(page,tool);await login(page,'student');await page.getByLabel('Search inventory').fill(tool);await page.getByRole('button',{name:tool,exact:true}).click();
  const dialog=page.getByRole('dialog'),count=dialog.getByLabel('Current quantity *',{exact:true});await count.fill(String(Number(await count.inputValue())+1));
  let saved=false,writes=0;
- await page.route('**/rest/v1/rpc/change_inventory_quantity',async route=>{writes++;const response=await route.fetch();saved=response.ok();await route.fulfill({response});});
+ await page.route('**/rest/v1/rpc/apply_inventory_changes',async route=>{writes++;const response=await route.fetch();saved=response.ok();await route.fulfill({response});});
  await page.route('**/rest/v1/inventory_items?*',async route=>{if(saved)await route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({message:'Synthetic nonretryable read failure after save'})});else await route.continue();});
- await dialog.getByRole('button',{name:'Save quantity',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await dialog.getByRole('button',{name:'Save changes',exact:true}).click();await expect(dialog).toHaveCount(0);
  await expect(page.getByRole('alert').filter({hasText:'Your change was saved'})).toContainText('do not submit the change again');expect(writes).toBe(1);
 });

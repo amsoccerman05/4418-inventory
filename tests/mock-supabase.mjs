@@ -14,7 +14,7 @@ await db.exec("create role anon;create role authenticated;create schema auth;cre
 if(logistics)await db.exec("create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant usage on schema storage to authenticated;grant select,insert,update,delete on storage.objects to authenticated;");
 for(const [role,id]of Object.entries(ids))await db.query('insert into auth.users(id,email) values($1,$2)',[id,role+'@example.test']);
 for(const file of ['001_initial_schema.sql','002_rls_policies.sql','003_operations_and_seed.sql'])await db.exec(await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8'));
-if(logistics)await allowRole(db);
+await allowRole(db);
 await db.exec("insert into public.areas(id,slug,name,active) values('44180000-0000-4000-8000-000000000098','storage-closet','Storage Closet',true),('44180000-0000-4000-8000-000000000097','retired-area','Retired Area',false)");
 for(const [role,id]of Object.entries(ids))await db.query('update public.profiles set role=$1,display_name=$2,primary_area_id=$3,active=$4 where id=$5',[role.startsWith('adminLead')?'admin_lead':role.startsWith('lead')?'lead':['inactive','assigned','programManager','projectManager','pendingLead'].includes(role)?'student':role,role[0].toUpperCase()+role.slice(1),['lead','adminLead','adminLeadInactive'].includes(role)?area:role==='leadStorage'?'44180000-0000-4000-8000-000000000098':role==='leadInactiveArea'?'44180000-0000-4000-8000-000000000097':null,!['inactive','adminLeadInactive'].includes(role),id]);
 const asUser=(id,fn)=>db.transaction(async tx=>{await tx.exec('set local role authenticated');await tx.query("select set_config('request.jwt.claim.sub',$1,true)",[id]);return fn(tx);});
@@ -40,6 +40,21 @@ if(logistics){
  await db.exec(await readFile(new URL('../supabase/migrations/20261028020701_normal_location_types_and_rename.sql',import.meta.url),'utf8'));
  await db.exec(await adapterSql());
  await db.exec(await readFile(new URL('../supabase/migrations/20261028170803_inventory_post_lock_authority.sql',import.meta.url),'utf8'));
+ await db.exec("update profiles set role='admin_lead' where role='admin';alter table profiles drop constraint profiles_role_check;alter table profiles add constraint profiles_role_check check(role in ('readonly','student','lead','admin_lead','mentor'));");
+ await db.exec(await readFile(new URL('../supabase/migrations/20261029190425_inventory_canonical_roles.sql',import.meta.url),'utf8'));
+}
+
+// V1 rendering compatibility fixture uses the reviewed canonical role helpers.
+// The logistics fixture above applies the full actual migration and security tests
+// validate that full chain; this historical no-logistics view has no media schema.
+if(!logistics){
+ await db.exec("update profiles set role='admin_lead' where role='admin';alter table profiles drop constraint profiles_role_check;alter table profiles add constraint profiles_role_check check(role in ('readonly','student','lead','admin_lead','mentor'));");
+ const pins=JSON.parse(await readFile(new URL('./fixtures/inventory-canonical-role-pins.json',import.meta.url),'utf8'));
+ for(const name of ['is_admin','can_count','can_edit','guard_item'])await db.exec(pins.functions.find(f=>f.schema==='private'&&f.name===name).expected_definition);
+ const reviewed=await readFile(new URL('../supabase/migrations/20261029190425_inventory_canonical_roles.sql',import.meta.url),'utf8');
+ const start=reviewed.indexOf('CREATE FUNCTION private.can_delete_item('),end=reviewed.indexOf('CREATE FUNCTION private.can_rename_location(',start);
+ await db.exec(reviewed.slice(start,end));
+ await db.exec('alter policy items_delete on inventory_items using(private.can_delete_item(area_id));');
 }
 
 const jwt=id=>Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:id,aud:'authenticated',role:'authenticated',exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000)})).toString('base64url')+'.test-signature';

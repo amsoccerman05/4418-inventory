@@ -28,7 +28,7 @@ for (const role of ['student', 'readonly', 'lead', 'mentor']) test(`${role} keep
   }
   await row.getByRole('button', {name: `View details for ${tool}`, exact: true}).click();
   await page.locator('summary').filter({hasText: /More details/}).click();
-  if (role === 'student' || role === 'readonly') {
+  if (role === 'readonly') {
     await expect(page.getByLabel('Item name *')).toBeDisabled();
     await expect(page.getByLabel('Expected quantity', {exact: true})).toBeDisabled();
     await expect(page.getByRole('button', {name: 'Delete item', exact: true})).toHaveCount(0);
@@ -36,14 +36,15 @@ for (const role of ['student', 'readonly', 'lead', 'mentor']) test(`${role} keep
   } else {
     await expect(page.getByLabel('Item name *')).toBeEnabled();
     await expect(page.getByLabel('Expected quantity', {exact: true})).toBeEnabled();
-    await expect(page.getByRole('button', {name: 'Delete item', exact: true})).toBeVisible();
+    if(role==='student')await expect(page.getByRole('button', {name: 'Delete item', exact: true})).toHaveCount(0);
+    else await expect(page.getByRole('button', {name: 'Delete item', exact: true})).toBeVisible();
     await expect(page.getByRole('button', {name: 'Save changes', exact: true})).toBeVisible();
   }
   if (role === 'readonly') await expect(page.getByLabel('Current quantity *', {exact: true})).toBeDisabled();
   else await expect(page.getByLabel('Current quantity *', {exact: true})).toBeEnabled();
 });
 
-test('student can keep or discard an unfinished new item without gaining metadata permission', async ({page}) => {
+test('student can keep or discard an unfinished new item without submitting it', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844});
   await signIn(page, 'student');
   await page.getByRole('button', {name: 'Add item', exact: true}).click();

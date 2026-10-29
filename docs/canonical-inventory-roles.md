@@ -1,0 +1,17 @@
+# Canonical Inventory roles
+
+This update supersedes the earlier Admin Lead compatibility matrix, not its historical tests. The current matrix is in README. It requires Hub’s explicit legacy-account conversion and validated canonical five-role CHECK; it does not modify any account, position or inventory records itself.
+
+`20261029190425_inventory_canonical_roles.sql` replaces 13 pinned existing functions, creates three private helpers with explicit authenticated-only execution, and narrows three policies (item DELETE and Storage object DELETE/UPDATE). Existing function owners, ACLs, search paths and SECURITY DEFINER status are preserved. Media helpers deliberately become VOLATILE so row locking can serialize authorization. Expected input/output function definitions and complete affected policy records are pinned; drift or replay aborts atomically.
+
+Students, Leads and Admin Leads edit existing item metadata and photos everywhere. Fields include name, category, type/ownership, count targets, location assignment, part/vendor/reference details and notes; existing integrity and stale-version checks apply. Existing item IDs, creators and audit identities remain immutable/server-generated. Reassigning an existing item's team area is Mentor-only. All normal users can choose an eligible area for a newly created item. Global location hierarchy/settings are not item metadata and are never accepted through this grant.
+
+Lead/Admin Lead creation of normal locations no longer requires a named position or Attendance registration. Active profile, confirmed Auth email, prior sign-in and not-banned checks remain; Mentor’s existing active-role authority is unchanged. Student creation stays denied even with a retained position. Admin Lead rename is name-only; existing assigned Student/Lead rename eligibility is unchanged. Item deletion and location photos retain own-primary-area Lead/Admin Lead or Mentor authority; trips, import and loss administration stay Mentor-only.
+
+## Verification
+
+- Unit and actual migration/RLS tests cover canonical role lists, Auth prerequisites, all-area editing, no Student location creation, Mentor-only reassignment, retag/delete denial, private helper ACLs, storage reference protection and unchanged accounts/positions.
+- Native PostgreSQL tests use only a temporary Unix socket cluster: item-row and advisory waits, creation and rename revocation, Mentor settings revocation, photo and delete profile serialization, plus positive controls. Profile locks use `FOR SHARE`, not `FOR KEY SHARE`. If authorization owns that lock first, later demotion waits until the authorized transaction commits; if demotion owns it first, authorization resumes after the committed new role and denies. This ordering is intentional, not a claim that a role can change mid-authorized transaction.
+- Hosted desktop/phone fixtures exercise genuine roles, rejected writes, retained drafts, retries, no duplicate submissions and readonly boundaries. Logistics fixtures apply the full migration. Historical V1 fixtures reuse only reviewed current item helpers because they intentionally omit the logistics schema; they are not a full-stack/security or concurrency substitute.
+
+No held PR4, QR work, real student fixtures or unrelated lost-update changes are included. Only the coordinator releases the reviewed migration after combined shared-schema/native/API/browser gates pass.

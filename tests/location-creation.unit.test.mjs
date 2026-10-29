@@ -27,5 +27,5 @@ test('a hanging capability request is aborted at five seconds without enabling c
  let fire,cleared=false,aborted=false;
  const timers={setTimeout:(fn,ms)=>{assert.equal(ms,5000);fire=fn;return 123;},clearTimeout:id=>{assert.equal(id,123);cleared=true;}};
  const repo=repository({rpc:()=>({abortSignal:signal=>new Promise((_,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(new Error('synthetic timeout'));},{once:true}))})},timers);
- const result=repo.locationCreationContext();fire();assert.deepEqual(await result,{userId:null,assignedLead:false});assert.equal(aborted,true);assert.equal(cleared,true);
+ const result=repo.locationCreationContext();fire();assert.deepEqual(await result,{userId:null,assignedLead:false,canRename:false});assert.equal(aborted,true);assert.equal(cleared,true);
 });

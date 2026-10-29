@@ -45,7 +45,7 @@ export class LocalStorageInventoryRepository implements InventoryRepository {
  async deletePhoto(){throw new Error('Photo uploads require the shared Supabase workspace.');}
  subscribe(){return ()=>{};}
  async profiles(){return [demoProfile];}
- async locationCreationContext(){return {userId:null,assignedLead:false};}
+ async locationCreationContext(){return {userId:null,assignedLead:false,canRename:false};}
  async history(itemId?:string,areaId?:string){return ((local.load() as LocalWithHistory).events??[]).filter(e=>(!itemId||e.itemId===itemId)&&(!areaId||e.areaId===areaId)).reverse().slice(0,30);}
  async importData(source:Database,current:Database){await this.apply(current,source);}
 }
@@ -111,10 +111,10 @@ export class SupabaseInventoryRepository implements InventoryRepository {
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
   try {
    const {data,error}=await this.client().rpc('inventory_location_creation_context',undefined,{get:true}).abortSignal(controller.signal);
-   if(!error&&data&&typeof data.user_id==='string')return {userId:data.user_id,assignedLead:data.assigned_lead===true};
+   if(!error&&data&&typeof data.user_id==='string')return {userId:data.user_id,assignedLead:data.assigned_lead===true,canRename:data.can_rename===true};
   } catch { /* Missing migration, timeout and failures all leave the additive UI disabled. */ }
   finally {clearTimeout(timeout);}
-  return {userId:null,assignedLead:false};
+  return {userId:null,assignedLead:false,canRename:false};
  }
  async history(itemId?:string,areaId?:string){let query=this.client().from('inventory_events').select('*').order('created_at',{ascending:false}).limit(30);if(itemId)query=query.eq('inventory_item_id',itemId);if(areaId)query=query.eq('area_id',areaId);const {data,error}=await query;if(error)throw error;return (data as Row[]).map(eventFromRow);}
  async importData(source:Database,current:Database){await this.apply(current,await migrationData(source,current));}

@@ -97,7 +97,7 @@ export function AddLocation({ db, save }: { db: Database; save:(location:Locatio
  }}>
   <label>Parent location<select value={parentId} onChange={e=>setParentId(e.target.value)}><option value="">Top-level location</option>{db.locations.filter(l=>l.kind!=='Drawer'&&l.kind!=='Bin'&&!l.tripId&&l.active!==false).map(l=><option key={l.id} value={l.id}>{locationPath(db.locations,l.id)}</option>)}</select></label>
   <label>Location type<select name="kind">{locationKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label>
-  {db.logistics&&<><label>Storage classification<select name="classification">{['permanent','project','robot','temporary','other'].map(k=><option value={k} key={k}>{title(k)}</option>)}</select></label><label>Location owner area<select name="ownerArea"><option value="">Team-wide (admin photos)</option>{db.areas.filter(a=>a.active!==false&&!isStorageArea(a)).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label></>}
+  {db.logistics&&<><label>Storage classification<select name="classification">{['permanent','project','robot','temporary','other'].map(k=><option value={k} key={k}>{title(k)}</option>)}</select></label><label>Location owner area<select name="ownerArea"><option value="">Team-wide (Mentor photos)</option>{db.areas.filter(a=>a.active!==false&&!isStorageArea(a)).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label></>}
   <label>Name / Code<input name="name" placeholder="Toolbox A or TA-01" required/></label>
   <label>Area / Room<input name="room" placeholder={parentId?'Inherited from parent':'Robotics Lab'} required={!parentId}/></label>
   <label className="full">Contents / Description<input name="description" placeholder="SAE Hex Keys"/></label>

@@ -2,7 +2,7 @@ import {useEffect,useState,useRef,type ReactNode} from 'react';
 import {ArrowRight,Camera,Plus,Package,Wrench,MapPin,BriefcaseBusiness,Pencil,X} from 'lucide-react';
 import {locationPath,locationKinds,ownerships,type Database,type Item,type Location} from './data';
 import {inventoryRepository as repository} from './services/repository';
-import {canCount,canEdit,isAdmin,isLead,type UserProfile} from './services/types';
+import {canCount,canManageLocationPhoto,isAdmin,isLead,type UserProfile} from './services/types';
 import {atLocation,activeTrip,title,tripStatuses,type InventoryAction,type ActionData,type Media,type Manifest} from './services/logistics-model';
 import {friendlyError} from './services/supabase';
 import {isStorageArea} from './team-areas';
@@ -43,7 +43,7 @@ export function ItemLocations({db,item,move,go,correct,verify}:{db:Database;item
  return <section className="item-balances"><div className="panel-heading"><div><h2>Where they are</h2><p><b>{current.quantity} total tracked</b> · Target {current.target} overall</p><small>Expected {current.expectedQuantity??'not configured'} at home: {locationPath(db.locations,current.locationId)}</small></div>{move&&<button type="button" className="secondary" onClick={move}>Move</button>}</div>{db.logistics.balances.filter(b=>b.itemId===item.id&&(b.quantity>0||b.locationId===current.locationId)).map(b=>{const l=db.locations.find(l=>l.id===b.locationId);return <div className="balance-row" key={b.id}><button type="button" className="location-link" onClick={()=>go(`location/${b.locationId}`)}>{locationPath(db.locations,b.locationId)}</button><b>{b.quantity} here</b>{correct&&!l?.tripId&&<BalanceCorrection key={b.id+'-'+b.updatedAt} item={atLocation(db,current,b.locationId)} correct={correct} verify={verify}/>} {l?.tripId&&<button type="button" className="badge" onClick={()=>go(`trip/${l.tripId}`)}>Traveling · {db.logistics!.trips.find(t=>t.id===l.tripId)?.name}</button>}</div>})}<MovementHistory db={db} itemId={item.id}/></section>;
 }
 function useAssignedLocationAccess(profile:UserProfile){
- const [access,setAccess]=useState<{userId:string|null;assignedLead:boolean}|null>(null);
+ const [access,setAccess]=useState<{userId:string|null;assignedLead:boolean;canRename:boolean}|null>(null);
  useEffect(()=>{
   let live=true,sequence=0;
   const refresh=async()=>{const current=++sequence;const next=await repository.locationCreationContext();if(live&&current===sequence)setAccess(next);};
@@ -52,7 +52,7 @@ function useAssignedLocationAccess(profile:UserProfile){
   void refresh();const timer=setInterval(()=>void refresh(),30000),focus=()=>void refresh();window.addEventListener('focus',focus);
   return()=>{live=false;sequence++;clearInterval(timer);window.removeEventListener('focus',focus);};
  },[profile.id,profile.active,profile.role,profile.updatedAt]);
- return profile.active&&['student','lead','admin_lead'].includes(profile.role)&&access?.userId===profile.id&&access.assignedLead;
+ return profile.active&&['student','lead','admin_lead'].includes(profile.role)&&access?.userId===profile.id&&access.canRename;
 }
 function normalStorageLocation(db:Database,id:string){
  const seen=new Set<string>();let current=db.locations.find(l=>l.id===id);
@@ -65,12 +65,11 @@ function normalStorageLocation(db:Database,id:string){
 }
 export function ProjectLocationForm({db,profile,run}:{db:Database;profile:UserProfile;run:RunAction}){
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');const submitting=useRef(false);
- const assigned=useAssignedLocationAccess(profile),admin=isAdmin(profile),normal=admin||assigned;
+ const admin=isAdmin(profile),normal=admin||isLead(profile);
  const ownerAreas=db.areas.filter(a=>a.active!==false&&!isStorageArea(a)&&(normal||a.id===profile.primaryAreaId));
- const legacyArea=isLead(profile)&&ownerAreas.some(a=>a.id===profile.primaryAreaId)?profile.primaryAreaId:null;
- useEffect(()=>{setOpen(false);setError('');},[assigned,profile.id,profile.active,profile.role,legacyArea]);
- if(!db.logistics||!profile.active||(!admin&&!isLead(profile)&&!assigned))return null;
- if(!normal&&!legacyArea)return <small className="location-access-help">To add a project location, ask a mentor to assign you an active team area.</small>;
+
+ useEffect(()=>{setOpen(false);setError('');},[profile.id,profile.active,profile.role]);
+ if(!db.logistics||!profile.active||!normal)return null;
  return <><button className="primary" onClick={()=>{setError('');setOpen(true);}}><Plus size={17}/>Add location</button>{open&&<CreationModal heading="Add location" busy={busy} close={()=>setOpen(false)}><form onSubmit={async e=>{
   e.preventDefault();if(submitting.current)return;const d=new FormData(e.currentTarget);submitting.current=true;setBusy(true);setError('');
   try {
@@ -113,7 +112,7 @@ export function Travel({db,profile,run,go,tripId,refresh}:{db:Database;profile:U
  if(!db.logistics)return <section className="panel settings-panel"><h2>Travel & movement</h2><p>{repository.mode==='demo'?'Enable a local movement demo to try balances and trips. Existing counts are preserved.':'Travel tools are not available yet. Contact a mentor; inventory is still available.'}</p>{repository.mode==='demo'&&<button className="primary" onClick={()=>void run('enable',{})}>Enable movement demo</button>}</section>;
  const g=db.logistics,trip=g.trips.find(t=>t.id===tripId);const admin=isAdmin(profile),manager=admin||isLead(profile);
  if(!trip)return <>
-  {!g.trips.length?<section className="panel travel-empty"><span className="travel-empty-icon"><BriefcaseBusiness size={32}/></span><h2>No trips yet</h2><p>Create a trip when the team is preparing for a regional, offseason event, or demo.</p>{admin?<NewTrip run={run}/>:<small>A mentor or admin can create the team’s next trip.</small>}</section>:['Active trips','Upcoming trips','Completed trips'].map((group,n)=>{const trips=g.trips.filter(t=>n===0?activeTrip(t)&&t.status!=='planning':n===1?t.status==='planning':!activeTrip(t));return trips.length>0&&<section className="travel-group" key={group}><h2>{group}</h2><div className="locations-grid">{trips.map(t=>{const m=g.manifest.filter(m=>m.tripId===t.id);const date=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'';return <button className="panel trip-card" key={t.id} onClick={()=>go(`trip/${t.id}`)}><span className={`badge ${activeTrip(t)?'good':''}`}>{title(t.status)}</span><h3>{t.name}</h3><small>{t.start?`${date(t.start)}${t.end?' – '+date(t.end):''}`:'Dates to be confirmed'}</small><div className="trip-card-counts"><span>{new Set(m.map(x=>x.itemId)).size} manifest items</span><span>{m.filter(x=>x.status==='packed'&&x.ownership==='Shared / School').reduce((n,x)=>n+x.quantity,0)} school-owned units traveling</span><span>{m.filter(x=>x.status==='approved').reduce((n,x)=>n+x.quantity,0)} units still need packing</span></div><span className="trip-card-link">Open trip <ArrowRight size={16}/></span></button>})}</div></section>})}
+  {!g.trips.length?<section className="panel travel-empty"><span className="travel-empty-icon"><BriefcaseBusiness size={32}/></span><h2>No trips yet</h2><p>Create a trip when the team is preparing for a regional, offseason event, or demo.</p>{admin?<NewTrip run={run}/>:<small>A mentor can create the team’s next trip.</small>}</section>:['Active trips','Upcoming trips','Completed trips'].map((group,n)=>{const trips=g.trips.filter(t=>n===0?activeTrip(t)&&t.status!=='planning':n===1?t.status==='planning':!activeTrip(t));return trips.length>0&&<section className="travel-group" key={group}><h2>{group}</h2><div className="locations-grid">{trips.map(t=>{const m=g.manifest.filter(m=>m.tripId===t.id);const date=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'';return <button className="panel trip-card" key={t.id} onClick={()=>go(`trip/${t.id}`)}><span className={`badge ${activeTrip(t)?'good':''}`}>{title(t.status)}</span><h3>{t.name}</h3><small>{t.start?`${date(t.start)}${t.end?' – '+date(t.end):''}`:'Dates to be confirmed'}</small><div className="trip-card-counts"><span>{new Set(m.map(x=>x.itemId)).size} manifest items</span><span>{m.filter(x=>x.status==='packed'&&x.ownership==='Shared / School').reduce((n,x)=>n+x.quantity,0)} school-owned units traveling</span><span>{m.filter(x=>x.status==='approved').reduce((n,x)=>n+x.quantity,0)} units still need packing</span></div><span className="trip-card-link">Open trip <ArrowRight size={16}/></span></button>})}</div></section>})}
  </>;
  const all=g.manifest.filter(m=>m.tripId===trip.id),manifest=all.filter(m=>!ownership||m.ownership===ownership);const tripLocations=db.locations.filter(l=>l.tripId===trip.id);const active=activeTrip(trip);
  return <><button className="text-button" onClick={()=>go('travel')}>All trips</button><section className="panel settings-panel"><div className="panel-heading"><div><h2>{trip.name}</h2><p>{trip.event} · {trip.destination} · {trip.start} {trip.end&&`— ${trip.end}`}</p></div>{admin&&active?<label>Trip status<select value={trip.status} onChange={e=>void run('trip_status',{tripId:trip.id,status:e.target.value})}>{tripStatuses.map(s=><option value={s} key={s}>{title(s)}</option>)}</select></label>:<span className="badge">{title(trip.status)}</span>}</div><p>{trip.notes}</p><div className="trip-tabs">{['Overview','Manifest','Locations','Activity','Return Audit'].map(t=><button className={tab===t?'primary':'secondary'} key={t} onClick={()=>setTab(t)}>{t}</button>)}</div></section>
@@ -123,7 +122,7 @@ export function Travel({db,profile,run,go,tripId,refresh}:{db:Database;profile:U
  {!manifest.length&&<p>No manifest items yet.</p>}
  {manifest.map(m=>{const item=db.items.find(i=>i.id===m.itemId);return <div className="manifest-row" key={m.id}><div><b>{item?.name}</b><small>{m.quantity} · {m.ownership}</small><small>Home: {locationPath(db.locations,m.homeLocationId)}</small><small>{m.status==='approved'?'Pack to':'Current'}: {locationPath(db.locations,m.currentLocationId)}</small><span className={`badge ${m.status==='returned'?'good':''}`}>{title(m.status)}</span>{m.resolution&&<p>{m.resolution}</p>}</div><div className="button-row">{active&&canCount(profile)&&trip.status!=='planning'&&m.status==='approved'&&<button className="secondary" onClick={()=>setOperation({row:m,action:'pack'})}>Pack</button>}{active&&canCount(profile)&&m.status==='packed'&&<><button className="secondary" onClick={()=>setOperation({row:m,action:'internal'})}>Move within trip</button><button className="secondary" onClick={()=>setOperation({row:m,action:'return'})}>Return home</button></>}{active&&admin&&['approved','packed'].includes(m.status)&&<button className="text-button" onClick={()=>setOperation({row:m,action:'resolve'})}>Resolve</button>}</div></div>})}
  {active&&manager&&['planning','packing'].includes(trip.status)&&<ApproveForm db={db} tripId={trip.id} run={run}/>}</section>}
- {tab==='Locations'&&<div className="locations-grid">{tripLocations.map(l=><section className="panel settings-panel" key={l.id}><button className="item-link" onClick={()=>go(`location/${l.id}`)}>{l.name}</button><PhotoPanel db={db} kind="locations" id={l.id} editable={admin||canEdit(profile,l.areaId||'')} refresh={refresh}/></section>)}</div>}
+ {tab==='Locations'&&<div className="locations-grid">{tripLocations.map(l=><section className="panel settings-panel" key={l.id}><button className="item-link" onClick={()=>go(`location/${l.id}`)}>{l.name}</button><PhotoPanel db={db} kind="locations" id={l.id} editable={canManageLocationPhoto(profile,l.areaId||'')} refresh={refresh}/></section>)}</div>}
  {tab==='Activity'&&<section className="panel settings-panel"><MovementHistory db={db} tripId={trip.id}/></section>}
  {operation&&<AllocationDialog key={operation.row.id+operation.action} db={db} {...operation} run={run} close={()=>setOperation(null)}/>}
  </>;
