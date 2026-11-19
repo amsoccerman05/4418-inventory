@@ -48,11 +48,11 @@ function useAssignedLocationAccess(profile:UserProfile){
   let live=true,sequence=0;
   const refresh=async()=>{const current=++sequence;const next=await repository.locationCreationContext();if(live&&current===sequence)setAccess(next);};
   setAccess(null);
-  if(!profile.active||!['student','lead','admin_lead'].includes(profile.role))return;
+  if(!profile.active||!['student','project_lead','lead','admin_lead'].includes(profile.role))return;
   void refresh();const timer=setInterval(()=>void refresh(),30000),focus=()=>void refresh();window.addEventListener('focus',focus);
   return()=>{live=false;sequence++;clearInterval(timer);window.removeEventListener('focus',focus);};
  },[profile.id,profile.active,profile.role,profile.updatedAt]);
- return profile.active&&['student','lead','admin_lead'].includes(profile.role)&&access?.userId===profile.id&&access.assignedLead;
+ return profile.active&&['student','project_lead','lead','admin_lead'].includes(profile.role)&&access?.userId===profile.id&&access.assignedLead;
 }
 function normalStorageLocation(db:Database,id:string){
  const seen=new Set<string>();let current=db.locations.find(l=>l.id===id);
